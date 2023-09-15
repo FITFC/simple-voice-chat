@@ -17,6 +17,7 @@ import javax.annotation.Nullable;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 public abstract class ALSpeakerBase implements Speaker {
 
@@ -79,9 +80,9 @@ public abstract class ALSpeakerBase implements Speaker {
     public void play(short[] data, float volume, @Nullable Vec3 position, @Nullable String category, float maxDistance) {
         runInContext(() -> {
             removeProcessedBuffersSync();
-            int buffers = getQueuedBuffersSync();
-            boolean stopped = getStateSync() == AL11.AL_INITIAL || getStateSync() == AL11.AL_STOPPED || buffers <= 1;
+            boolean stopped = isStoppedSync();
             if (stopped) {
+                Voicechat.LOGGER.debug("Filling playback buffer {}", audioChannelId);
                 for (int i = 0; i < getBufferSize(); i++) {
                     writeSync(new short[bufferSize], 1F, position, category, maxDistance);
                 }
@@ -94,6 +95,10 @@ public abstract class ALSpeakerBase implements Speaker {
                 SoundManager.checkAlError();
             }
         });
+    }
+
+    protected boolean isStoppedSync() {
+        return getStateSync() == AL11.AL_INITIAL || getStateSync() == AL11.AL_STOPPED || getQueuedBuffersSync() <= 0;
     }
 
     protected int getBufferSize() {
@@ -231,7 +236,20 @@ public abstract class ALSpeakerBase implements Speaker {
     }
 
     public void runInContext(Runnable runnable) {
+        if (executor.isShutdown()) {
+            return;
+        }
         soundManager.runInContext(executor, runnable);
+    }
+
+    public void fetchQueuedBuffersAsync(Consumer<Integer> supplier) {
+        runInContext(() -> {
+            if (isStoppedSync()) {
+                supplier.accept(-1);
+                return;
+            }
+            supplier.accept(getQueuedBuffersSync());
+        });
     }
 
 }

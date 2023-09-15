@@ -26,14 +26,18 @@ public class ClientVoicechat {
     @Nullable
     private ClientVoicechatConnection connection;
     @Nullable
+    private InitializationData initializationData;
+    @Nullable
     private AudioRecorder recorder;
+    private long startTime;
 
     public ClientVoicechat() {
+        this.startTime = System.currentTimeMillis();
         this.talkCache = new TalkCache();
         try {
             reloadSoundManager();
         } catch (SpeakerException e) {
-            Voicechat.LOGGER.error("Failed to start sound manager: {}", e.getMessage());
+            Voicechat.LOGGER.error("Failed to start sound manager", e);
             ClientManager.sendPlayerError("message.voicechat.speaker_unavailable", e);
         }
         this.audioChannels = new HashMap<>();
@@ -52,8 +56,9 @@ public class ClientVoicechat {
     }
 
     public void connect(InitializationData data) throws Exception {
-        Voicechat.LOGGER.info("Connecting to server: '" + data.getServerIP() + ":" + data.getServerPort() + "'");
-        connection = new ClientVoicechatConnection(this, data);
+        initializationData = data;
+        Voicechat.LOGGER.info("Connecting to voice chat server: '{}:{}'", initializationData.getServerIP(), initializationData.getServerPort());
+        connection = new ClientVoicechatConnection(this, initializationData);
         connection.start();
     }
 
@@ -70,9 +75,9 @@ public class ClientVoicechat {
                         ch.addToQueue(packet);
                         ch.start();
                         audioChannels.put(packet.getSender(), ch);
-                    } catch (NativeDependencyException e) {
-                        CooldownTimer.run("decoder_unavailable", () -> {
-                            Voicechat.LOGGER.error("Failed to create audio channel: {}", e.getMessage());
+                    } catch (Exception e) {
+                        CooldownTimer.run("playback_unavailable", () -> {
+                            Voicechat.LOGGER.error("Failed to create audio channel", e);
                             ClientManager.sendPlayerError("message.voicechat.playback_unavailable", e);
                         });
                     }
@@ -121,7 +126,7 @@ public class ClientVoicechat {
             micThread.close();
         }
         micThread = new MicThread(this, connection, e -> {
-            Voicechat.LOGGER.error("Failed to start microphone thread: {}", e.getMessage());
+            Voicechat.LOGGER.error("Failed to start microphone thread", e);
             ClientManager.sendPlayerError("message.voicechat.microphone_unavailable", e);
         });
         micThread.start();
@@ -183,6 +188,11 @@ public class ClientVoicechat {
     }
 
     @Nullable
+    public InitializationData getInitializationData() {
+        return initializationData;
+    }
+
+    @Nullable
     public SoundManager getSoundManager() {
         return soundManager;
     }
@@ -194,6 +204,14 @@ public class ClientVoicechat {
     @Nullable
     public AudioRecorder getRecorder() {
         return recorder;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public Map<UUID, AudioChannel> getAudioChannels() {
+        return audioChannels;
     }
 
     public void close() {
@@ -211,6 +229,7 @@ public class ClientVoicechat {
 
         if (connection != null) {
             connection.close();
+            connection = null;
         }
 
         if (recorder != null) {

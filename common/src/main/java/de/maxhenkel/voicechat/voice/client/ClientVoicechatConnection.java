@@ -2,6 +2,7 @@ package de.maxhenkel.voicechat.voice.client;
 
 import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.api.ClientVoicechatSocket;
+import de.maxhenkel.voicechat.debug.VoicechatUncaughtExceptionHandler;
 import de.maxhenkel.voicechat.intercompatibility.ClientCompatibilityManager;
 import de.maxhenkel.voicechat.plugins.PluginManager;
 import de.maxhenkel.voicechat.voice.common.*;
@@ -17,6 +18,7 @@ public class ClientVoicechatConnection extends Thread {
     private final InetAddress address;
     private boolean running;
     private boolean authenticated;
+    private boolean connected;
     private final AuthThread authThread;
     private long lastKeepAlive;
 
@@ -31,6 +33,7 @@ public class ClientVoicechatConnection extends Thread {
         this.authThread.start();
         setDaemon(true);
         setName("VoiceChatConnectionThread");
+        setUncaughtExceptionHandler(new VoicechatUncaughtExceptionHandler());
         this.socket.open();
     }
 
@@ -46,8 +49,8 @@ public class ClientVoicechatConnection extends Thread {
         return socket;
     }
 
-    public boolean isAuthenticated() {
-        return authenticated;
+    public boolean isInitialized() {
+        return authenticated && connected;
     }
 
     @Override
@@ -61,6 +64,11 @@ public class ClientVoicechatConnection extends Thread {
                     if (!authenticated) {
                         Voicechat.LOGGER.info("Server acknowledged authentication");
                         authenticated = true;
+                    }
+                } else if (in.getPacket() instanceof ConnectionCheckAckPacket) {
+                    if (authenticated && !connected) {
+                        Voicechat.LOGGER.info("Server acknowledged connection check");
+                        connected = true;
                         ClientCompatibilityManager.INSTANCE.emitVoiceChatConnectedEvent(this);
                         lastKeepAlive = System.currentTimeMillis();
                     }
@@ -77,7 +85,7 @@ public class ClientVoicechatConnection extends Thread {
         } catch (InterruptedException ignored) {
         } catch (Exception e) {
             if (running) {
-                Voicechat.LOGGER.error("Failed to process packet from server: {}", e.getMessage(), e);
+                Voicechat.LOGGER.error("Failed to process packet from server", e);
             }
         }
     }
@@ -113,25 +121,59 @@ public class ClientVoicechatConnection extends Thread {
     }
 
     private class AuthThread extends Thread {
+
         private boolean running;
+        private int authLogMessageCount;
+        private int validateLogMessageCount;
 
         public AuthThread() {
             this.running = true;
             setDaemon(true);
             setName("VoiceChatAuthenticationThread");
+            setDefaultUncaughtExceptionHandler(new VoicechatUncaughtExceptionHandler());
         }
 
         @Override
         public void run() {
-            while (running && !authenticated) {
-                try {
-                    Voicechat.LOGGER.info("Trying to authenticate voice connection");
-                    sendToServer(new NetworkMessage(new AuthenticatePacket(data.getPlayerUUID(), data.getSecret())));
-                } catch (Exception e) {
-                    if (!socket.isClosed()) {
-                        Voicechat.LOGGER.error("Failed to authenticate voice connection: {}", e.getMessage());
+            while (running) {
+                if (authenticated && connected) {
+                    break;
+                }
+                if (!authenticated) {
+                    validateLogMessageCount = 0;
+                    try {
+                        if (authLogMessageCount < 10) {
+                            Voicechat.LOGGER.info("Trying to authenticate voice chat connection");
+                            authLogMessageCount++;
+                        } else if (authLogMessageCount == 10) {
+                            Voicechat.LOGGER.warn("Trying to authenticate voice chat connection (this message will not be logged again)");
+                            authLogMessageCount++;
+                        }
+                        sendToServer(new NetworkMessage(new AuthenticatePacket(data.getPlayerUUID(), data.getSecret())));
+                    } catch (Exception e) {
+                        if (!socket.isClosed()) {
+                            Voicechat.LOGGER.error("Failed to authenticate voice chat connection: {}", e.getMessage());
+                        }
+                    }
+                } else {
+                    authLogMessageCount = 0;
+                    try {
+                        if (validateLogMessageCount < 10) {
+                            Voicechat.LOGGER.info("Trying to validate voice chat connection");
+                            validateLogMessageCount++;
+                        } else if (validateLogMessageCount == 10) {
+                            Voicechat.LOGGER.warn("Trying to validate voice chat connection (this message will not be logged again)");
+                            validateLogMessageCount++;
+                        }
+
+                        sendToServer(new NetworkMessage(new ConnectionCheckPacket()));
+                    } catch (Exception e) {
+                        if (!socket.isClosed()) {
+                            Voicechat.LOGGER.error("Failed to validate voice chat connection: {}", e.getMessage());
+                        }
                     }
                 }
+
                 Utils.sleep(1000);
             }
         }

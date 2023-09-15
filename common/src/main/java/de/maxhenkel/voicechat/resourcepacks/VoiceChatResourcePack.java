@@ -21,11 +21,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class VoiceChatResourcePack extends AbstractPackResources {
 
@@ -85,29 +84,37 @@ public class VoiceChatResourcePack extends AbstractPackResources {
 
     @Override
     public Collection<ResourceLocation> getResources(PackType type, String namespace, String prefix, Predicate<ResourceLocation> pathFilter) {
+        List<ResourceLocation> list = Lists.newArrayList();
         try {
             URL url = Voicechat.class.getResource(getPath());
-            Path resPath = Paths.get(url.toURI());
-            List<Path> files = Files.walk(resPath).collect(Collectors.toList());
+            Path namespacePath = Paths.get(url.toURI()).resolve(type.getDirectory()).resolve(namespace);
+            Path resPath = namespacePath.resolve(prefix);
 
-            List<ResourceLocation> list = Lists.newArrayList();
-            String absolutePath = type.getDirectory() + "/" + namespace + "/";
-            String absolutePrefixPath = absolutePath + prefix + "/";
-
-            for (Path path : files) {
-                if (!Files.isDirectory(path)) {
-                    String name = path.getFileName().toString();
-                    if (!name.endsWith(".mcmeta") && name.startsWith(absolutePrefixPath)) {
-                        list.add(new ResourceLocation(namespace, name.substring(absolutePath.length())));
-                    }
-                }
+            if (!Files.exists(resPath)) {
+                return list;
             }
 
-            return list;
-
+            try (Stream<Path> files = Files.walk(resPath)) {
+                files.filter(path -> !Files.isDirectory(path)).forEach(path -> {
+                    ResourceLocation resourceLocation = new ResourceLocation(namespace, convertPath(path).substring(convertPath(namespacePath).length() + 1));
+                    list.add(resourceLocation);
+                });
+            }
         } catch (Exception e) {
-            return Collections.emptyList();
+            Voicechat.LOGGER.error("Failed to list builtin pack resources", e);
         }
+        return list.stream().filter(pathFilter).toList();
+    }
+
+    private static String convertPath(Path path) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (int i = 0; i < path.getNameCount(); i++) {
+            stringBuilder.append(path.getName(i));
+            if (i < path.getNameCount() - 1) {
+                stringBuilder.append("/");
+            }
+        }
+        return stringBuilder.toString();
     }
 
     @Override

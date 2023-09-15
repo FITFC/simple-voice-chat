@@ -1,13 +1,10 @@
 package de.maxhenkel.voicechat.voice.client;
 
-import com.sun.jna.Platform;
 import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.VoicechatClient;
 import de.maxhenkel.voicechat.api.opus.OpusEncoder;
 import de.maxhenkel.voicechat.config.ServerConfig;
-import de.maxhenkel.voicechat.macos.PermissionCheck;
-import de.maxhenkel.voicechat.macos.VersionCheck;
-import de.maxhenkel.voicechat.macos.avfoundation.AVAuthorizationStatus;
+import de.maxhenkel.voicechat.debug.VoicechatUncaughtExceptionHandler;
 import de.maxhenkel.voicechat.plugins.PluginManager;
 import de.maxhenkel.voicechat.plugins.impl.opus.OpusManager;
 import de.maxhenkel.voicechat.voice.client.microphone.Microphone;
@@ -44,7 +41,7 @@ public class MicThread extends Thread {
         this.connection = connection;
         this.onError = onError;
         this.running = true;
-        this.encoder = OpusManager.createEncoder(SoundManager.SAMPLE_RATE, SoundManager.FRAME_SIZE, connection == null ? 1024 : connection.getData().getMtuSize(), connection == null ? ServerConfig.Codec.VOIP.getOpusValue() : connection.getData().getCodec().getOpusValue());
+        this.encoder = OpusManager.createEncoder(connection == null ? ServerConfig.Codec.VOIP.getMode() : connection.getData().getCodec().getMode());
 
         this.denoiser = Denoiser.createDenoiser();
         if (denoiser == null) {
@@ -54,25 +51,23 @@ public class MicThread extends Thread {
 
         setDaemon(true);
         setName("MicrophoneThread");
+        setUncaughtExceptionHandler(new VoicechatUncaughtExceptionHandler());
     }
 
     @Override
     public void run() {
+        Microphone mic = getMic();
         if (mic == null) {
-            try {
-                mic = MicrophoneManager.createMicrophone();
-                Minecraft.getInstance().execute(this::checkMicrophonePermissions);
-            } catch (MicrophoneException e) {
-                onError.accept(e);
-                running = false;
-                return;
-            }
+            return;
         }
 
         while (running) {
             if (connection != null) {
                 // Checking here for timeouts, because we don't have any other looping thread
                 connection.checkTimeout();
+                if (!running) {
+                    break;
+                }
             }
             if (microphoneLocked || ClientManager.getPlayerStateManager().isDisabled()) {
                 activating = false;
@@ -106,23 +101,12 @@ public class MicThread extends Thread {
         }
     }
 
-    public void checkMicrophonePermissions() {
-        if (!VoicechatClient.CLIENT_CONFIG.macosCheckMicrophonePermission.get()) {
-            return;
-        }
-        if (Platform.isMac() && VersionCheck.isCompatible()) {
-            AVAuthorizationStatus status = PermissionCheck.getMicrophonePermissions();
-            if (status.equals(AVAuthorizationStatus.DENIED)) {
-                ClientManager.sendPlayerError("message.voicechat.macos_no_mic_permission", null);
-                Voicechat.LOGGER.warn("User hasn't granted microphone permissions: {}", status.name());
-            } else if (!status.equals(AVAuthorizationStatus.AUTHORIZED)) {
-                ClientManager.sendPlayerError("message.voicechat.macos_unsupported_launcher", null);
-            }
-        }
-    }
-
     @Nullable
     public short[] pollMic() {
+        Microphone mic = getMic();
+        if (mic == null) {
+            throw new IllegalStateException("No microphone available");
+        }
         if (!mic.isStarted()) {
             mic.start();
         }
@@ -137,6 +121,24 @@ public class MicThread extends Thread {
         short[] buff = mic.read();
         volumeManager.adjustVolumeMono(buff, VoicechatClient.CLIENT_CONFIG.microphoneAmplification.get().floatValue());
         return denoiseIfEnabled(buff);
+    }
+
+    @Nullable
+    private Microphone getMic() {
+        if (!running) {
+            return null;
+        }
+        if (mic == null) {
+            try {
+                mic = MicrophoneManager.createMicrophone();
+                Minecraft.getInstance().execute(ClientManager.instance()::checkMicrophonePermissions);
+            } catch (MicrophoneException e) {
+                onError.accept(e);
+                running = false;
+                return null;
+            }
+        }
+        return mic;
     }
 
     private volatile boolean activating;
@@ -242,13 +244,14 @@ public class MicThread extends Thread {
         }
         running = false;
 
-        try {
-            join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        if (Thread.currentThread() != this) {
+            try {
+                join(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
 
-        mic.stop();
         mic.close();
         encoder.close();
         if (denoiser != null) {
@@ -267,7 +270,7 @@ public class MicThread extends Thread {
         }
 
         try {
-            if (connection != null && connection.isAuthenticated()) {
+            if (connection != null && connection.isInitialized()) {
                 byte[] encoded = encoder.encode(audio);
                 connection.sendToServer(new NetworkMessage(new MicPacket(encoded, whispering, sequenceNumber.getAndIncrement())));
                 stopPacketSent = false;
@@ -290,7 +293,7 @@ public class MicThread extends Thread {
             return;
         }
 
-        if (connection == null || !connection.isAuthenticated()) {
+        if (connection == null || !connection.isInitialized()) {
             return;
         }
         try {

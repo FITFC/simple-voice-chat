@@ -1,7 +1,7 @@
 package de.maxhenkel.voicechat.config;
 
 import de.maxhenkel.configbuilder.ConfigBuilder;
-import de.maxhenkel.configbuilder.ConfigEntry;
+import de.maxhenkel.configbuilder.entry.ConfigEntry;
 import de.maxhenkel.voicechat.Voicechat;
 
 public class ServerConfig {
@@ -15,7 +15,6 @@ public class ServerConfig {
     public final ConfigEntry<Integer> voiceChatMtuSize;
     public final ConfigEntry<Integer> keepAlive;
     public final ConfigEntry<Boolean> groupsEnabled;
-    public final ConfigEntry<Boolean> openGroups;
     public final ConfigEntry<String> voiceHost;
     public final ConfigEntry<Boolean> allowRecording;
     public final ConfigEntry<Boolean> spectatorInteraction;
@@ -30,12 +29,13 @@ public class ServerConfig {
         voiceChatPort = builder
                 .integerEntry("port", 24454, -1, 65535,
                         "The port of the voice chat server",
-                        "Setting this to \"-1\" sets the port to the Minecraft servers port"
+                        "Setting this to \"-1\" sets the port to the Minecraft servers port (Not recommended)"
                 );
         voiceChatBindAddress = builder
                 .stringEntry("bind_address", "",
                         "The IP address to bind the voice chat server on",
-                        "Leave empty to bind to an IP address chosen by the kernel"
+                        "Leave empty to use 'server-ip' of server.properties",
+                        "To bind to the wildcard address, use '*'"
                 );
         voiceChatDistance = builder
                 .doubleEntry("max_voice_distance", 48D, 1D, 1_000_000D,
@@ -67,13 +67,10 @@ public class ServerConfig {
                 .booleanEntry("enable_groups", true,
                         "If group chats are allowed"
                 );
-        openGroups = builder
-                .booleanEntry("open_groups", false,
-                        "If players in group chats can be heard locally"
-                );
         voiceHost = builder
                 .stringEntry("voice_host", "",
                         "The host name that clients should use to connect to the voice chat",
+                        "This may also include a port, e.g. 'example.com:24454'",
                         "Don't change this value if you don't know what you are doing"
                 );
         allowRecording = builder

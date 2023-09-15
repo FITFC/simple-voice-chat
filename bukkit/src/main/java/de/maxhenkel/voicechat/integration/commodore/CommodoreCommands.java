@@ -4,10 +4,9 @@ import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.command.VoiceChatCommands;
 import me.lucko.commodore.Commodore;
-import net.minecraft.commands.arguments.ArgumentEntity;
-import net.minecraft.commands.arguments.ArgumentUUID;
 
 public class CommodoreCommands {
 
@@ -16,20 +15,21 @@ public class CommodoreCommands {
                 .then(LiteralArgumentBuilder.literal("help"))
                 .then(LiteralArgumentBuilder.literal("test").then(RequiredArgumentBuilder.argument("target", playerArgument())))
                 .then(LiteralArgumentBuilder.literal("invite").then(RequiredArgumentBuilder.argument("target", playerArgument())))
-                .then(LiteralArgumentBuilder.literal("join").then(RequiredArgumentBuilder.argument("group", uuidArgument())))
-                .then(LiteralArgumentBuilder.literal("join").then(RequiredArgumentBuilder.argument("group", uuidArgument()).then(RequiredArgumentBuilder.argument("password", StringArgumentType.string()))))
+                .then(LiteralArgumentBuilder.literal("join").then(RequiredArgumentBuilder.argument("group_id", uuidArgument())))
+                .then(LiteralArgumentBuilder.literal("join").then(RequiredArgumentBuilder.argument("group_id", uuidArgument()).then(RequiredArgumentBuilder.argument("password", StringArgumentType.string()))))
+                .then(LiteralArgumentBuilder.literal("join").then(RequiredArgumentBuilder.argument("group_name", StringArgumentType.string()).suggests(GroupNameSuggestionProvider.INSTANCE)))
+                .then(LiteralArgumentBuilder.literal("join").then(RequiredArgumentBuilder.argument("group_name", StringArgumentType.string()).suggests(GroupNameSuggestionProvider.INSTANCE).then(RequiredArgumentBuilder.argument("password", StringArgumentType.string()))))
                 .then(LiteralArgumentBuilder.literal("leave"));
 
         commodore.register(literalBuilder);
     }
 
     private static ArgumentType<?> playerArgument() {
-        // return new ArgumentEntity(true, true);
-        return ArgumentEntity.c();
+        return Voicechat.compatibility.playerArgument();
     }
 
     private static ArgumentType<?> uuidArgument() {
-        return ArgumentUUID.a();
+        return Voicechat.compatibility.uuidArgument();
     }
 
 }

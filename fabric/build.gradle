@@ -1,23 +1,10 @@
-buildscript {
-    repositories {
-        mavenCentral()
-        maven { url = 'https://maven.maxhenkel.de/repository/public' }
-        mavenLocal()
-    }
-    dependencies {
-        classpath group: 'de.maxhenkel.forge-update', name: 'forge-update', version: '1.0.4'
-    }
-}
-
 plugins {
-    id 'fabric-loom' version '1.0-SNAPSHOT'
-    id 'com.matthewprenger.cursegradle' version '1.4.0'
-    id 'com.github.johnrengelman.shadow' version '7.1.0'
-    id 'io.github.juuxel.loom-quiltflower' version '1.7.4'
+    id 'fabric-loom'
+    id 'com.matthewprenger.cursegradle' version "${cursegradle_version}"
+    id 'com.github.johnrengelman.shadow' version "${shadow_version}"
+    id 'com.modrinth.minotaur' version "${minotaur_version}"
+    id 'mod-update' version "${mod_update_version}"
 }
-
-apply plugin: 'forge-update'
-apply plugin: 'com.modrinth.minotaur'
 
 sourceCompatibility = JavaLanguageVersion.of(java_version as int)
 targetCompatibility = JavaLanguageVersion.of(java_version as int)
@@ -30,17 +17,10 @@ repositories {
     mavenCentral()
     maven { url = 'https://maven.fabricmc.net/' }
     maven { url = 'https://maven.terraformersmc.com/' }
-    maven { url "https://maven.shedaniel.me/" }
-    maven {
-        name = 'henkelmax.public'
-        url = 'https://maven.maxhenkel.de/repository/public'
-    }
-    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
-    maven {
-        name = "viaversion-repo"
-        url = 'https://repo.viaversion.com/'
-    }
-    mavenLocal()
+    maven { url = 'https://maven.shedaniel.me/' }
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
+    maven { url = 'https://oss.sonatype.org/content/repositories/snapshots' }
+    maven { url = 'https://repo.viaversion.com/' }
 }
 
 runClient.doFirst {
@@ -53,12 +33,12 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
 
     Set<String> apiModules = [
-            "fabric-api-base",
-            "fabric-command-api-v2",
-            "fabric-lifecycle-events-v1",
-            "fabric-networking-api-v1",
-            "fabric-resource-loader-v0",
-            "fabric-key-binding-api-v1"
+            'fabric-api-base',
+            'fabric-command-api-v2',
+            'fabric-lifecycle-events-v1',
+            'fabric-networking-api-v1',
+            'fabric-resource-loader-v0',
+            'fabric-key-binding-api-v1'
     ]
 
     apiModules.forEach {
@@ -98,7 +78,7 @@ dependencies {
     shadow project(':api')
 }
 
-task generateJava(type: Copy) {
+tasks.register('generateJava', Copy) {
     from project(':common').file('src/template/java')
     into "${buildDir}/generated/java"
     expand 'compatibility_version': mod_compatibility_version
@@ -107,9 +87,10 @@ sourceSets.main.java {
     srcDir "${buildDir}/generated/java"
 }
 compileJava.dependsOn generateJava
+generateJava.dependsOn('sourcesJar')
 
 processResources {
-    filesMatching("fabric.mod.json") {
+    filesMatching('fabric.mod.json') {
         expand 'mod_id': mod_id,
                 'mod_name': mod_name,
                 'mod_vendor': mod_vendor,
@@ -124,12 +105,12 @@ processResources {
     from project(":common").sourceSets.main.resources
 }
 
-tasks.withType(JavaCompile) {
+tasks.withType(JavaCompile).configureEach {
     source(project(':common').sourceSets.main.allSource)
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.encoding = "UTF-8"
+    it.options.encoding = 'UTF-8'
     it.options.release = java_version as int
 }
 
@@ -143,20 +124,12 @@ jar {
     }
 }
 
-tasks.runClient.doFirst {
-    environment 'COMPATIBILITY_VERSION', mod_compatibility_version
-}
-
-tasks.runServer.doFirst {
-    environment 'COMPATIBILITY_VERSION', mod_compatibility_version
-}
-
 curseforge {
     apiKey = file("${rootDir}/curseforge_api_key.txt").exists() ? file("${rootDir}/curseforge_api_key.txt").text : ''
     project {
         id = curse_id
         changelogType = 'markdown'
-        changelog = file("changelog.md")
+        changelog = file('changelog.md')
         releaseType = release_type
         addGameVersion curseforge_minecraft_version
         addGameVersion 'Fabric'
@@ -192,57 +165,40 @@ modrinth {
     versionName = "${mod_name} ${mod_version}"
     uploadFile = remapJar
     versionType = release_type.toUpperCase()
-    changelog = file("changelog.md").text
+    changelog = file('changelog.md').text
     gameVersions = [minecraft_version]
     loaders = ['fabric']
     dependencies {
-        optional.project "mOgUt4GM" // ModMenu
-        optional.project "9s6osm5g" // ClothConfig
-        optional.project "Vebnzrzj" // LuckPerms
-        optional.project "YlKdE5VK" // ViaFabric
+        optional.project 'mOgUt4GM' // ModMenu
+        optional.project '9s6osm5g' // ClothConfig
+        optional.project 'Vebnzrzj' // LuckPerms
+        optional.project 'YlKdE5VK' // ViaFabric
     }
 }
 tasks.modrinth.dependsOn(build)
 
-forgeUpdate {
-    def messages = []
-    file("changelog.md").eachLine { String line ->
-        if (line.trim().startsWith('-')) {
-            messages.add(line.replaceFirst('-', '').trim())
-        }
-    }
-
+modUpdate {
     serverURL = 'https://update.maxhenkel.de/'
-    apiKey = file("${rootDir}/forge_update_api_key.txt").exists() ? file("${rootDir}/forge_update_api_key.txt").text : ''
     modID = mod_id
     gameVersion = minecraft_version
     modLoader = 'fabric'
     modVersion = mod_version
-    updateMessages = messages
+    changelogFile = file('changelog.md')
     releaseType = release_type
     tags = recommended == 'true' ? ['recommended'] : []
 }
 
 shadowJar {
     configurations = [project.configurations.shadow]
-    classifier 'shadow-dev'
+    archiveClassifier = 'shadow-dev'
     relocate 'de.maxhenkel.configbuilder', "de.maxhenkel.${mod_id}.configbuilder"
-    relocate 'de.maxhenkel.opus4j', "de.maxhenkel.${mod_id}.opus4j"
-    relocate 'de.maxhenkel.lame4j', "de.maxhenkel.${mod_id}.lame4j"
     relocate 'org.concentus', "de.maxhenkel.${mod_id}.concentus"
-    relocate 'de.maxhenkel.rnnoise4j', "de.maxhenkel.${mod_id}.rnnoise4j"
-    relocate 'com.dd.plist', "de.maxhenkel.${mod_id}.com.dd.plist"
     dependencies {
-        exclude(dependency('net.java.dev.jna:jna'))
-        exclude(dependency('net.java.dev.jna:jna-platform'))
         exclude(dependency('com.google.code.findbugs:jsr305'))
     }
 }
 
-prepareRemapJar {
-    dependsOn shadowJar
-}
-
 remapJar {
-    input = shadowJar.archiveFile.get()
+    dependsOn shadowJar
+    inputFile = shadowJar.archiveFile.get()
 }

@@ -1,31 +1,31 @@
 package de.maxhenkel.voicechat.net;
 
+import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.util.FriendlyByteBuf;
-import de.maxhenkel.voicechat.util.NamespacedKeyUtil;
-import de.maxhenkel.voicechat.voice.common.ClientGroup;
-import org.bukkit.NamespacedKey;
+import net.kyori.adventure.key.Key;
 
 import javax.annotation.Nullable;
+import java.util.UUID;
 
 public class JoinedGroupPacket implements Packet<JoinedGroupPacket> {
 
-    public static final NamespacedKey JOINED_GROUP = NamespacedKeyUtil.voicechat("joined_group");
+    public static final Key JOINED_GROUP = Voicechat.compatibility.createNamespacedKey("joined_group");
 
     @Nullable
-    private ClientGroup group;
+    private UUID group;
     private boolean wrongPassword;
 
     public JoinedGroupPacket() {
 
     }
 
-    public JoinedGroupPacket(@Nullable ClientGroup group, boolean wrongPassword) {
+    public JoinedGroupPacket(@Nullable UUID group, boolean wrongPassword) {
         this.group = group;
         this.wrongPassword = wrongPassword;
     }
 
     @Nullable
-    public ClientGroup getGroup() {
+    public UUID getGroup() {
         return group;
     }
 
@@ -34,14 +34,14 @@ public class JoinedGroupPacket implements Packet<JoinedGroupPacket> {
     }
 
     @Override
-    public NamespacedKey getID() {
+    public Key getID() {
         return JOINED_GROUP;
     }
 
     @Override
     public JoinedGroupPacket fromBytes(FriendlyByteBuf buf) {
         if (buf.readBoolean()) {
-            group = ClientGroup.fromBytes(buf);
+            group = buf.readUUID();
         }
         wrongPassword = buf.readBoolean();
         return this;
@@ -51,7 +51,7 @@ public class JoinedGroupPacket implements Packet<JoinedGroupPacket> {
     public void toBytes(FriendlyByteBuf buf) {
         buf.writeBoolean(group != null);
         if (group != null) {
-            group.toBytes(buf);
+            buf.writeUUID(group);
         }
         buf.writeBoolean(wrongPassword);
     }

@@ -8,10 +8,12 @@ import de.maxhenkel.voicechat.plugins.CategoryManager;
 import de.maxhenkel.voicechat.plugins.impl.VolumeCategoryImpl;
 import org.bukkit.entity.Player;
 
+import javax.annotation.Nullable;
+
 public class ServerCategoryManager extends CategoryManager {
 
     public void onPlayerCompatibilityCheckSucceeded(Player player) {
-        Voicechat.logDebug("Synchronizing {} volume categories with {}", categories.size(), player.getName());
+        Voicechat.LOGGER.debug("Synchronizing {} volume categories with {}", categories.size(), player.getName());
         for (VolumeCategoryImpl category : getCategories()) {
             broadcastAddCategory(category);
         }
@@ -20,15 +22,17 @@ public class ServerCategoryManager extends CategoryManager {
     @Override
     public void addCategory(VolumeCategoryImpl category) {
         super.addCategory(category);
-        Voicechat.logDebug("Synchronizing volume category {} with all players", category.getId());
+        Voicechat.LOGGER.debug("Synchronizing volume category {} with all players", category.getId());
         broadcastAddCategory(category);
     }
 
     @Override
-    public void removeCategory(String categoryId) {
-        super.removeCategory(categoryId);
-        Voicechat.logDebug("Removing volume category {} for all players", categoryId);
+    @Nullable
+    public VolumeCategoryImpl removeCategory(String categoryId) {
+        VolumeCategoryImpl volumeCategory = super.removeCategory(categoryId);
+        Voicechat.LOGGER.debug("Removing volume category {} for all players", categoryId);
         broadcastRemoveCategory(categoryId);
+        return volumeCategory;
     }
 
     private void broadcastAddCategory(VolumeCategoryImpl category) {

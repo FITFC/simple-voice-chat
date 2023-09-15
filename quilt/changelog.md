@@ -1,2 +1,1 @@
-- Reworked config system
-- Reworked MacOS microphone permission check
+- Added join group by name command

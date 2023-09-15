@@ -15,12 +15,18 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
-public class VoiceChatCommands implements CommandExecutor {
+public class VoiceChatCommands implements CommandExecutor, TabCompleter {
 
     public static final String VOICECHAT_COMMAND = "voicechat";
 
@@ -29,15 +35,19 @@ public class VoiceChatCommands implements CommandExecutor {
         if (checkNoVoicechat(commandSender)) {
             return true;
         }
-        if (!(commandSender instanceof Player sender)) {
+        if (!(commandSender instanceof Player)) {
             return true;
         }
+        Player sender = (Player) commandSender;
+
         if (args.length >= 1) {
             if (args[0].equalsIgnoreCase("help")) {
                 return helpCommand(sender, command, label, args);
             } else if (args[0].equalsIgnoreCase("test")) {
                 if (commandSender.hasPermission(PermissionManager.ADMIN_PERMISSION)) {
                     return testCommand(sender, command, label, args);
+                } else {
+                    return true;
                 }
             } else if (args[0].equalsIgnoreCase("invite")) {
                 return inviteCommand(sender, command, label, args);
@@ -48,6 +58,36 @@ public class VoiceChatCommands implements CommandExecutor {
             }
         }
         return helpCommand(sender, command, label, args);
+    }
+
+    @Nullable
+    @Override
+    public List<String> onTabComplete(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        if (args.length == 1) {
+            return tabCompleteList(args[0], Arrays.asList("help", "test", "invite", "join", "leave"));
+        }
+
+        if (args.length == 2) {
+            String arg = args[0];
+            if (arg.equals("test") || arg.equals("invite")) {
+                return null;
+            } else if (arg.startsWith("join")) {
+                return Collections.emptyList();
+            }
+        }
+
+        if (args.length == 3) {
+            String arg = args[0];
+            if (arg.startsWith("join")) {
+                return Collections.emptyList();
+            }
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<String> tabCompleteList(String arg, List<String> list) {
+        return list.stream().filter(s -> s.startsWith(arg)).collect(Collectors.toList());
     }
 
     private boolean helpCommand(Player commandSender, Command command, String label, String[] args) {
@@ -133,7 +173,7 @@ public class VoiceChatCommands implements CommandExecutor {
             return true;
         }
 
-        Group group = Voicechat.SERVER.getServer().getGroupManager().getGroup(state.getGroup().getId());
+        Group group = Voicechat.SERVER.getServer().getGroupManager().getGroup(state.getGroup());
         if (group == null) {
             return true;
         }
@@ -166,20 +206,42 @@ public class VoiceChatCommands implements CommandExecutor {
             return false;
         }
 
+        int argIndex = 1;
         UUID groupUUID;
         try {
-            groupUUID = UUID.fromString(args[1]);
+            groupUUID = UUID.fromString(args[argIndex]);
         } catch (Exception e) {
-            NetManager.sendMessage(commandSender, Component.translatable("message.voicechat.group_does_not_exist"));
+            String groupName;
+            if (args[argIndex].startsWith("\"")) {
+                StringBuilder sb = new StringBuilder();
+                for (; argIndex < args.length; argIndex++) {
+                    sb.append(args[argIndex]).append(" ");
+                    if (args[argIndex].endsWith("\"") && !args[argIndex].endsWith("\\\"")) {
+                        break;
+                    }
+                }
+                groupName = sb.toString().trim();
+                String[] split = groupName.split("\"");
+                if (split.length > 1) {
+                    groupName = split[1];
+                }
+            } else {
+                groupName = args[argIndex];
+            }
+            groupUUID = getGroupUUID(commandSender, Voicechat.SERVER.getServer(), groupName);
+        }
+
+        if (groupUUID == null) {
             return true;
         }
 
+        argIndex++;
+
         String password = null;
-        if (args.length >= 3) {
+        if (args.length >= argIndex + 1) {
             StringBuilder sb = new StringBuilder();
-            for (int i = 2; i < args.length; i++) {
-                sb.append(args[i]);
-                sb.append(" ");
+            for (; argIndex < args.length; argIndex++) {
+                sb.append(args[argIndex]).append(" ");
             }
             password = sb.toString().trim();
             if (password.startsWith("\"")) {
@@ -192,6 +254,22 @@ public class VoiceChatCommands implements CommandExecutor {
 
         joinGroup(commandSender, groupUUID, password);
         return true;
+    }
+
+    private UUID getGroupUUID(Player commandSender, Server server, String groupName) {
+        List<Group> groups = server.getGroupManager().getGroups().values().stream().filter(group -> group.getName().equals(groupName)).collect(Collectors.toList());
+
+        if (groups.isEmpty()) {
+            NetManager.sendMessage(commandSender, Component.translatable("message.voicechat.group_does_not_exist"));
+            return null;
+        }
+
+        if (groups.size() > 1) {
+            NetManager.sendMessage(commandSender, Component.translatable("message.voicechat.group_name_not_unique"));
+            return null;
+        }
+
+        return groups.get(0).getId();
     }
 
     private static void joinGroup(Player commandSender, UUID groupID, @Nullable String password) {
@@ -237,13 +315,13 @@ public class VoiceChatCommands implements CommandExecutor {
     }
 
     private static boolean checkNoVoicechat(CommandSender commandSender) {
-        if (commandSender instanceof Player player) {
-            if (Voicechat.SERVER.isCompatible(player)) {
+        if (commandSender instanceof Player) {
+            if (Voicechat.SERVER.isCompatible((Player) commandSender)) {
                 return false;
             }
-            commandSender.sendMessage(Voicechat.translate("voicechat_needed_command").formatted("Simple Voice Chat"));
+            commandSender.sendMessage(String.format(Voicechat.TRANSLATIONS.voicechatNeededForCommandMessage.get(), "Simple Voice Chat"));
         } else {
-            commandSender.sendMessage(Voicechat.translate("command_as_player"));
+            commandSender.sendMessage(Voicechat.TRANSLATIONS.playerCommandMessage.get());
         }
         return true;
     }
@@ -261,5 +339,4 @@ public class VoiceChatCommands implements CommandExecutor {
             return null;
         }
     }
-
 }

@@ -1,8 +1,13 @@
 package de.maxhenkel.voicechat.voice.client;
 
 import de.maxhenkel.voicechat.Voicechat;
+import de.maxhenkel.voicechat.VoicechatClient;
+import de.maxhenkel.voicechat.debug.DebugOverlay;
 import de.maxhenkel.voicechat.intercompatibility.ClientCompatibilityManager;
 import de.maxhenkel.voicechat.intercompatibility.CommonCompatibilityManager;
+import de.maxhenkel.voicechat.macos.PermissionCheck;
+import de.maxhenkel.voicechat.macos.VersionCheck;
+import de.maxhenkel.voicechat.macos.avfoundation.AVAuthorizationStatus;
 import de.maxhenkel.voicechat.net.NetManager;
 import de.maxhenkel.voicechat.net.RequestSecretPacket;
 import de.maxhenkel.voicechat.net.SecretPacket;
@@ -25,17 +30,22 @@ public class ClientManager {
     @Nullable
     private ClientVoicechat client;
     private final ClientPlayerStateManager playerStateManager;
+    private final ClientGroupManager groupManager;
     private final ClientCategoryManager categoryManager;
     private final PTTKeyHandler pttKeyHandler;
     private final RenderEvents renderEvents;
+    private final DebugOverlay debugOverlay;
     private final KeyEvents keyEvents;
     private final Minecraft minecraft;
+    private boolean hasShownPermissionsMessage;
 
     private ClientManager() {
         playerStateManager = new ClientPlayerStateManager();
+        groupManager = new ClientGroupManager();
         categoryManager = new ClientCategoryManager();
         pttKeyHandler = new PTTKeyHandler();
         renderEvents = new RenderEvents();
+        debugOverlay = new DebugOverlay();
         keyEvents = new KeyEvents();
         minecraft = Minecraft.getInstance();
 
@@ -76,19 +86,45 @@ public class ClientManager {
                     client.connect(new InitializationData("127.0.0.1", secretPacket));
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                Voicechat.LOGGER.error("Failed to determine server address", e);
             }
         }
     }
 
     private void onJoinWorld() {
+        if (VoicechatClient.CLIENT_CONFIG.muteOnJoin.get()) {
+            VoicechatClient.CLIENT_CONFIG.muted.set(true);
+        }
         if (client != null) {
             Voicechat.LOGGER.info("Disconnecting from previous connection due to server change");
             onDisconnect();
         }
+        hasShownPermissionsMessage = false;
         Voicechat.LOGGER.info("Sending secret request to the server");
         NetManager.sendToServer(new RequestSecretPacket(Voicechat.COMPATIBILITY_VERSION));
         client = new ClientVoicechat();
+    }
+
+    public void checkMicrophonePermissions() {
+        if (!VoicechatClient.CLIENT_CONFIG.macosCheckMicrophonePermission.get()) {
+            return;
+        }
+        if (VersionCheck.isMacOSNativeCompatible()) {
+            AVAuthorizationStatus status = PermissionCheck.getMicrophonePermissions();
+            if (status.equals(AVAuthorizationStatus.DENIED)) {
+                if (!hasShownPermissionsMessage) {
+                    ClientManager.sendPlayerError("message.voicechat.macos_no_mic_permission", null);
+                    hasShownPermissionsMessage = true;
+                }
+                Voicechat.LOGGER.warn("User hasn't granted microphone permissions: {}", status.name());
+            } else if (!status.equals(AVAuthorizationStatus.AUTHORIZED)) {
+                if (!hasShownPermissionsMessage) {
+                    ClientManager.sendPlayerError("message.voicechat.macos_unsupported_launcher", null);
+                    hasShownPermissionsMessage = true;
+                }
+                Voicechat.LOGGER.warn("User has an unsupported launcher: {}", status.name());
+            }
+        }
     }
 
     public static void sendPlayerError(String translationKey, @Nullable Exception e) {
@@ -140,7 +176,7 @@ public class ClientManager {
             }
             NetManager.sendToServer(new RequestSecretPacket(Voicechat.COMPATIBILITY_VERSION));
         } catch (Exception e) {
-            Voicechat.LOGGER.error("Failed to change voice chat port: {}", e.getMessage());
+            Voicechat.LOGGER.error("Failed to change voice chat port", e);
         }
         Minecraft.getInstance().gui.getChat().addMessage(Component.translatable("message.voicechat.server_port", server.getPort()));
     }
@@ -152,6 +188,10 @@ public class ClientManager {
 
     public static ClientPlayerStateManager getPlayerStateManager() {
         return instance().playerStateManager;
+    }
+
+    public static ClientGroupManager getGroupManager() {
+        return instance().groupManager;
     }
 
     public static ClientCategoryManager getCategoryManager() {
@@ -166,13 +206,17 @@ public class ClientManager {
         return instance().renderEvents;
     }
 
+    public static DebugOverlay getDebugOverlay() {
+        return instance().debugOverlay;
+    }
+
     public KeyEvents getKeyEvents() {
         return keyEvents;
     }
 
     private static ClientManager instance;
 
-    public static ClientManager instance() {
+    public static synchronized ClientManager instance() {
         if (instance == null) {
             instance = new ClientManager();
         }

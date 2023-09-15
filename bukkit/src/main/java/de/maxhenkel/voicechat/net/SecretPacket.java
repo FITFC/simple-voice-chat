@@ -1,17 +1,17 @@
 package de.maxhenkel.voicechat.net;
 
+import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.config.ServerConfig;
 import de.maxhenkel.voicechat.plugins.PluginManager;
 import de.maxhenkel.voicechat.util.FriendlyByteBuf;
-import de.maxhenkel.voicechat.util.NamespacedKeyUtil;
-import org.bukkit.NamespacedKey;
+import net.kyori.adventure.key.Key;
 import org.bukkit.entity.Player;
 
 import java.util.UUID;
 
 public class SecretPacket implements Packet<SecretPacket> {
 
-    public static final NamespacedKey SECRET = NamespacedKeyUtil.voicechat("secret");
+    public static final Key SECRET = Voicechat.compatibility.createNamespacedKey("secret");
 
     private UUID secret;
     private int serverPort;
@@ -28,9 +28,9 @@ public class SecretPacket implements Packet<SecretPacket> {
 
     }
 
-    public SecretPacket(Player player, UUID secret, ServerConfig serverConfig) {
+    public SecretPacket(Player player, UUID secret, int port, ServerConfig serverConfig) {
         this.secret = secret;
-        this.serverPort = serverConfig.voiceChatPort.get();
+        this.serverPort = port;
         this.playerUUID = player.getUniqueId();
         this.codec = serverConfig.voiceChatCodec.get();
         this.mtuSize = serverConfig.voiceChatMtuSize.get();
@@ -78,7 +78,7 @@ public class SecretPacket implements Packet<SecretPacket> {
     }
 
     @Override
-    public NamespacedKey getID() {
+    public Key getID() {
         return SECRET;
     }
 

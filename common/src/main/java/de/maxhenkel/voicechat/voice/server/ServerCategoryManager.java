@@ -10,6 +10,8 @@ import de.maxhenkel.voicechat.plugins.impl.VolumeCategoryImpl;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import javax.annotation.Nullable;
+
 public class ServerCategoryManager extends CategoryManager {
 
     private final Server server;
@@ -20,7 +22,7 @@ public class ServerCategoryManager extends CategoryManager {
     }
 
     private void onPlayerCompatibilityCheckSucceeded(ServerPlayer player) {
-        Voicechat.logDebug("Synchronizing {} volume categories with {}", categories.size(), player.getDisplayName().getString());
+        Voicechat.LOGGER.debug("Synchronizing {} volume categories with {}", categories.size(), player.getDisplayName().getString());
         for (VolumeCategoryImpl category : getCategories()) {
             broadcastAddCategory(server.getServer(), category);
         }
@@ -29,15 +31,17 @@ public class ServerCategoryManager extends CategoryManager {
     @Override
     public void addCategory(VolumeCategoryImpl category) {
         super.addCategory(category);
-        Voicechat.logDebug("Synchronizing volume category {} with all players", category.getId());
+        Voicechat.LOGGER.debug("Synchronizing volume category {} with all players", category.getId());
         broadcastAddCategory(server.getServer(), category);
     }
 
     @Override
-    public void removeCategory(String categoryId) {
-        super.removeCategory(categoryId);
-        Voicechat.logDebug("Removing volume category {} for all players", categoryId);
+    @Nullable
+    public VolumeCategoryImpl removeCategory(String categoryId) {
+        VolumeCategoryImpl volumeCategory = super.removeCategory(categoryId);
+        Voicechat.LOGGER.debug("Removing volume category {} for all players", categoryId);
         broadcastRemoveCategory(server.getServer(), categoryId);
+        return volumeCategory;
     }
 
     private void broadcastAddCategory(MinecraftServer server, VolumeCategoryImpl category) {

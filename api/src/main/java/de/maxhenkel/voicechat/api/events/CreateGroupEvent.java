@@ -13,7 +13,7 @@ public interface CreateGroupEvent extends GroupEvent {
     Group getGroup();
 
     /**
-     * @return the connection of the player that created the group - <code>null</code> if the group was created programmatically
+     * @return the connection of the player that created the group or <code>null</code> if the group was not created by a player
      */
     @Nullable
     VoicechatConnection getConnection();

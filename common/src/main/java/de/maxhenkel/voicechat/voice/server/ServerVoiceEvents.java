@@ -45,11 +45,7 @@ public class ServerVoiceEvents {
 
     public Component getIncompatibleMessage(int clientCompatibilityVersion) {
         if (clientCompatibilityVersion <= 6) {
-            return Component.literal("Your voice chat version is not compatible with the servers version.\nPlease install version ")
-                    .append(Component.literal(CommonCompatibilityManager.INSTANCE.getModVersion()).withStyle(ChatFormatting.BOLD))
-                    .append(" of ")
-                    .append(Component.literal(CommonCompatibilityManager.INSTANCE.getModName()).withStyle(ChatFormatting.BOLD))
-                    .append(".");
+            return Component.literal(Voicechat.TRANSLATIONS.voicechatNotCompatibleMessage.get().formatted(CommonCompatibilityManager.INSTANCE.getModVersion(), CommonCompatibilityManager.INSTANCE.getModName()));
         } else {
             return Component.translatable("message.voicechat.incompatible_version",
                     Component.literal(CommonCompatibilityManager.INSTANCE.getModVersion()).withStyle(ChatFormatting.BOLD),
@@ -58,7 +54,11 @@ public class ServerVoiceEvents {
     }
 
     public boolean isCompatible(ServerPlayer player) {
-        return clientCompatibilities.getOrDefault(player.getUUID(), -1) == Voicechat.COMPATIBILITY_VERSION;
+        return isCompatible(player.getUUID());
+    }
+
+    public boolean isCompatible(UUID playerUuid) {
+        return clientCompatibilities.getOrDefault(playerUuid, -1) == Voicechat.COMPATIBILITY_VERSION;
     }
 
     public void serverStarting(MinecraftServer mcServer) {
@@ -93,7 +93,11 @@ public class ServerVoiceEvents {
         }
         CommonCompatibilityManager.INSTANCE.emitPlayerCompatibilityCheckSucceeded(player);
 
-        UUID secret = server.getSecret(player.getUUID());
+        UUID secret = server.generateNewSecret(player.getUUID());
+        if (secret == null) {
+            Voicechat.LOGGER.warn("Player already requested secret - ignoring");
+            return;
+        }
         NetManager.sendToClient(player, new SecretPacket(player, secret, server.getPort(), Voicechat.SERVER_CONFIG));
         Voicechat.LOGGER.info("Sent secret to {}", player.getDisplayName().getString());
     }
@@ -118,7 +122,7 @@ public class ServerVoiceEvents {
                 if (!isCompatible(serverPlayer)) {
                     serverPlayer.server.execute(() -> {
                         serverPlayer.connection.disconnect(
-                                Component.literal("You need %s %s to play on this server".formatted(
+                                Component.literal(Voicechat.TRANSLATIONS.forceVoicechatKickMessage.get().formatted(
                                         CommonCompatibilityManager.INSTANCE.getModName(),
                                         CommonCompatibilityManager.INSTANCE.getModVersion()
                                 ))
@@ -136,7 +140,7 @@ public class ServerVoiceEvents {
         }
 
         server.disconnectClient(player.getUUID());
-        Voicechat.LOGGER.info("Disconnecting client " + player.getDisplayName().getString());
+        Voicechat.LOGGER.info("Disconnecting client {}", player.getDisplayName().getString());
     }
 
     @Nullable

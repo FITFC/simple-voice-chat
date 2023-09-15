@@ -3,6 +3,10 @@ package de.maxhenkel.voicechat.plugins.impl;
 import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.api.*;
 import de.maxhenkel.voicechat.api.audiochannel.*;
+import de.maxhenkel.voicechat.api.audiolistener.AudioListener;
+import de.maxhenkel.voicechat.api.audiolistener.PlayerAudioListener;
+import de.maxhenkel.voicechat.api.audiosender.AudioSender;
+import de.maxhenkel.voicechat.api.config.ConfigAccessor;
 import de.maxhenkel.voicechat.api.events.SoundPacketEvent;
 import de.maxhenkel.voicechat.api.opus.OpusEncoder;
 import de.maxhenkel.voicechat.api.packets.EntitySoundPacket;
@@ -10,10 +14,12 @@ import de.maxhenkel.voicechat.api.packets.LocationalSoundPacket;
 import de.maxhenkel.voicechat.api.packets.StaticSoundPacket;
 import de.maxhenkel.voicechat.plugins.PluginManager;
 import de.maxhenkel.voicechat.plugins.impl.audiochannel.*;
+import de.maxhenkel.voicechat.plugins.impl.audiolistener.PlayerAudioListenerImpl;
+import de.maxhenkel.voicechat.plugins.impl.audiosender.AudioSenderImpl;
+import de.maxhenkel.voicechat.plugins.impl.config.ConfigAccessorImpl;
 import de.maxhenkel.voicechat.plugins.impl.packets.EntitySoundPacketImpl;
 import de.maxhenkel.voicechat.plugins.impl.packets.LocationalSoundPacketImpl;
 import de.maxhenkel.voicechat.plugins.impl.packets.StaticSoundPacketImpl;
-import de.maxhenkel.voicechat.voice.common.NetworkMessage;
 import de.maxhenkel.voicechat.voice.common.PlayerState;
 import de.maxhenkel.voicechat.voice.common.SoundPacket;
 import de.maxhenkel.voicechat.voice.server.ClientConnection;
@@ -22,6 +28,7 @@ import de.maxhenkel.voicechat.voice.server.ServerWorldUtils;
 
 import javax.annotation.Nullable;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -107,21 +114,63 @@ public class VoicechatServerApiImpl extends VoicechatApiImpl implements Voicecha
         return new AudioPlayerImpl(audioChannel, encoder, new AudioSupplier(audio));
     }
 
-    public static void sendPacket(VoicechatConnection receiver, SoundPacket<?> s) {
+    @Override
+    public AudioSender createAudioSender(VoicechatConnection connection) {
+        return new AudioSenderImpl(connection.getPlayer().getUuid());
+    }
+
+    @Override
+    public boolean registerAudioSender(AudioSender sender) {
+        if (!(sender instanceof AudioSenderImpl)) {
+            return false;
+        }
+        return AudioSenderImpl.registerAudioSender((AudioSenderImpl) sender);
+    }
+
+    @Override
+    public boolean unregisterAudioSender(AudioSender sender) {
+        if (!(sender instanceof AudioSenderImpl)) {
+            return false;
+        }
+        return AudioSenderImpl.unregisterAudioSender((AudioSenderImpl) sender);
+    }
+
+    @Override
+    public PlayerAudioListener.Builder playerAudioListenerBuilder() {
+        return new PlayerAudioListenerImpl.BuilderImpl();
+    }
+
+    @Override
+    public boolean registerAudioListener(AudioListener listener) {
+        return PluginManager.instance().registerAudioListener(listener);
+    }
+
+    @Override
+    public boolean unregisterAudioListener(AudioListener listener) {
+        return unregisterAudioListener(listener.getListenerId());
+    }
+
+    @Override
+    public boolean unregisterAudioListener(UUID listenerId) {
+        return PluginManager.instance().unregisterAudioListener(listenerId);
+    }
+
+    public static void sendPacket(VoicechatConnection receiver, SoundPacket<?> soundPacket) {
         Server server = Voicechat.SERVER.getServer();
         if (server == null) {
             return;
         }
+
         PlayerState state = server.getPlayerStateManager().getState(receiver.getPlayer().getUuid());
         if (state == null) {
             return;
         }
-        if (PluginManager.instance().onSoundPacket(null, null, (net.minecraft.server.level.ServerPlayer) receiver.getPlayer().getPlayer(), state, s, SoundPacketEvent.SOURCE_PLUGIN)) {
-            return;
-        }
-        ClientConnection c = server.getConnections().get(receiver.getPlayer().getUuid());
+
+        net.minecraft.server.level.ServerPlayer player = (net.minecraft.server.level.ServerPlayer) receiver.getPlayer().getPlayer();
+
+        @Nullable ClientConnection c = server.getConnections().get(receiver.getPlayer().getUuid());
         try {
-            c.send(server, new NetworkMessage(s));
+            server.sendSoundPacket(null, null, player, state, c, soundPacket, SoundPacketEvent.SOURCE_PLUGIN);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -143,7 +192,45 @@ public class VoicechatServerApiImpl extends VoicechatApiImpl implements Voicecha
 
     @Override
     public Group createGroup(String name, @Nullable String password) {
-        return new GroupImpl(new de.maxhenkel.voicechat.voice.server.Group(UUID.randomUUID(), name, password));
+        return createGroup(name, password, false);
+    }
+
+    @Override
+    public Group createGroup(String name, @Nullable String password, boolean persistent) {
+        return groupBuilder().setName(name).setPassword(password).setPersistent(persistent).build();
+    }
+
+    @Override
+    public Group.Builder groupBuilder() {
+        return new GroupImpl.BuilderImpl();
+    }
+
+    @Override
+    public boolean removeGroup(UUID groupId) {
+        Server server = Voicechat.SERVER.getServer();
+        if (server == null) {
+            return false;
+        }
+        return server.getGroupManager().removeGroup(groupId);
+    }
+
+    @Nullable
+    @Override
+    public Group getGroup(UUID groupId) {
+        Server server = Voicechat.SERVER.getServer();
+        if (server == null) {
+            return null;
+        }
+        return new GroupImpl(server.getGroupManager().getGroup(groupId));
+    }
+
+    @Override
+    public Collection<Group> getGroups() {
+        Server server = Voicechat.SERVER.getServer();
+        if (server == null) {
+            return Collections.emptyList();
+        }
+        return server.getGroupManager().getGroups().values().stream().map(group -> (Group) new GroupImpl(group)).toList();
     }
 
     @Nullable
@@ -180,6 +267,7 @@ public class VoicechatServerApiImpl extends VoicechatApiImpl implements Voicecha
             return;
         }
         server.getCategoryManager().addCategory(c);
+        PluginManager.instance().onRegisterVolumeCategory(category);
     }
 
     @Override
@@ -188,7 +276,24 @@ public class VoicechatServerApiImpl extends VoicechatApiImpl implements Voicecha
         if (server == null) {
             return;
         }
-        server.getCategoryManager().removeCategory(categoryId);
+        VolumeCategoryImpl category = server.getCategoryManager().removeCategory(categoryId);
+        if (category != null) {
+            PluginManager.instance().onUnregisterVolumeCategory(category);
+        }
+    }
+
+    @Override
+    public Collection<VolumeCategory> getVolumeCategories() {
+        Server server = Voicechat.SERVER.getServer();
+        if (server == null) {
+            return Collections.emptyList();
+        }
+        return server.getCategoryManager().getCategories().stream().map(VolumeCategory.class::cast).toList();
+    }
+
+    @Override
+    public ConfigAccessor getServerConfig() {
+        return new ConfigAccessorImpl(Voicechat.SERVER_CONFIG.voiceChatDistance.getConfig());
     }
 
 }

@@ -7,7 +7,9 @@ import de.maxhenkel.voicechat.api.events.MicrophoneMuteEvent;
 import de.maxhenkel.voicechat.api.events.VoicechatDisableEvent;
 import de.maxhenkel.voicechat.gui.CreateGroupScreen;
 import de.maxhenkel.voicechat.gui.EnterPasswordScreen;
+import de.maxhenkel.voicechat.gui.group.GroupList;
 import de.maxhenkel.voicechat.gui.group.GroupScreen;
+import de.maxhenkel.voicechat.gui.group.JoinGroupList;
 import de.maxhenkel.voicechat.gui.group.JoinGroupScreen;
 import de.maxhenkel.voicechat.gui.volume.AdjustVolumeList;
 import de.maxhenkel.voicechat.intercompatibility.ClientCompatibilityManager;
@@ -34,7 +36,7 @@ public class ClientPlayerStateManager {
 
     private boolean disconnected;
     @Nullable
-    private ClientGroup group;
+    private UUID group;
 
     private Map<UUID, PlayerState> states;
 
@@ -46,18 +48,22 @@ public class ClientPlayerStateManager {
 
         CommonCompatibilityManager.INSTANCE.getNetManager().playerStateChannel.setClientListener((client, handler, packet) -> {
             states.put(packet.getPlayerState().getUuid(), packet.getPlayerState());
-            Voicechat.logDebug("Got state for {}: {}", packet.getPlayerState().getName(), packet.getPlayerState());
+            Voicechat.LOGGER.debug("Got state for {}: {}", packet.getPlayerState().getName(), packet.getPlayerState());
             VoicechatClient.USERNAME_CACHE.updateUsernameAndSave(packet.getPlayerState().getUuid(), packet.getPlayerState().getName());
             AdjustVolumeList.update();
+            JoinGroupList.update();
+            GroupList.update();
         });
         CommonCompatibilityManager.INSTANCE.getNetManager().playerStatesChannel.setClientListener((client, handler, packet) -> {
             states = packet.getPlayerStates();
-            Voicechat.logDebug("Received {} states", states.size());
+            Voicechat.LOGGER.debug("Received {} state(s)", states.size());
             for (PlayerState state : states.values()) {
                 VoicechatClient.USERNAME_CACHE.updateUsername(state.getUuid(), state.getName());
             }
             VoicechatClient.USERNAME_CACHE.save();
             AdjustVolumeList.update();
+            JoinGroupList.update();
+            GroupList.update();
         });
         CommonCompatibilityManager.INSTANCE.getNetManager().joinedGroupChannel.setClientListener((client, handler, packet) -> {
             Screen screen = Minecraft.getInstance().screen;
@@ -68,8 +74,14 @@ public class ClientPlayerStateManager {
                 }
                 client.player.displayClientMessage(Component.translatable("message.voicechat.wrong_password").withStyle(ChatFormatting.DARK_RED), true);
             } else if (group != null && screen instanceof JoinGroupScreen || screen instanceof CreateGroupScreen || screen instanceof EnterPasswordScreen) {
-                Minecraft.getInstance().setScreen(new GroupScreen(group));
+                ClientGroup clientGroup = getGroup();
+                if (clientGroup != null) {
+                    Minecraft.getInstance().setScreen(new GroupScreen(clientGroup));
+                } else {
+                    Voicechat.LOGGER.warn("Received join group packet without group being present");
+                }
             }
+            GroupList.update();
         });
         ClientCompatibilityManager.INSTANCE.onVoiceChatConnected(this::onVoiceChatConnected);
         ClientCompatibilityManager.INSTANCE.onVoiceChatDisconnected(this::onVoiceChatDisconnected);
@@ -124,7 +136,7 @@ public class ClientPlayerStateManager {
 
     public void syncOwnState() {
         NetManager.sendToServer(new UpdateStatePacket(isDisabled()));
-        Voicechat.logDebug("Sent own state to server: disabled={}", isDisabled());
+        Voicechat.LOGGER.debug("Sent own state to server: disabled={}", isDisabled());
     }
 
     public boolean isDisabled() {
@@ -161,10 +173,6 @@ public class ClientPlayerStateManager {
         PluginManager.instance().dispatchEvent(MicrophoneMuteEvent.class, new MicrophoneMuteEventImpl(muted));
     }
 
-    public boolean isInGroup() {
-        return getGroup() != null;
-    }
-
     public boolean isInGroup(Player player) {
         PlayerState state = states.get(player.getUUID());
         if (state == null) {
@@ -174,7 +182,7 @@ public class ClientPlayerStateManager {
     }
 
     @Nullable
-    public ClientGroup getGroup(Player player) {
+    public UUID getGroup(Player player) {
         PlayerState state = states.get(player.getUUID());
         if (state == null) {
             return null;
@@ -184,6 +192,14 @@ public class ClientPlayerStateManager {
 
     @Nullable
     public ClientGroup getGroup() {
+        if (group == null) {
+            return null;
+        }
+        return ClientManager.getGroupManager().getGroup(group);
+    }
+
+    @Nullable
+    public UUID getGroupID() {
         return group;
     }
 

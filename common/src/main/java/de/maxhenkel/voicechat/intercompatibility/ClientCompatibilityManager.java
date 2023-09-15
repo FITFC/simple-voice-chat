@@ -27,6 +27,8 @@ public abstract class ClientCompatibilityManager {
 
     public abstract void onMouseEvent(MouseEvent onMouseEvent);
 
+    public abstract void onClientTick(Runnable onClientTick);
+
     public abstract InputConstants.Key getBoundKeyOf(KeyMapping keyBinding);
 
     public abstract void onHandleKeyBinds(Runnable onHandleKeyBinds);
@@ -42,8 +44,6 @@ public abstract class ClientCompatibilityManager {
     public abstract void onVoiceChatDisconnected(Runnable onVoiceChatDisconnected);
 
     public abstract void onDisconnect(Runnable onDisconnect);
-
-    public abstract void onJoinServer(Runnable onJoinServer);
 
     public abstract void onJoinWorld(Runnable onJoinWorld);
 

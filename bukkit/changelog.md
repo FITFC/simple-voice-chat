@@ -1,1 +1,1 @@
-- Reworked config system
+- Added join group by name command

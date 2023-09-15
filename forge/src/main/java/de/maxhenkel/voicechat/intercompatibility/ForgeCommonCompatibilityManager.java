@@ -176,6 +176,11 @@ public class ForgeCommonCompatibilityManager extends CommonCompatibilityManager 
     }
 
     @Override
+    public boolean isModLoaded(String modId) {
+        return ModList.get().isLoaded(modId);
+    }
+
+    @Override
     public List<VoicechatPlugin> loadPlugins() {
         List<VoicechatPlugin> plugins = new ArrayList<>();
         ModList.get().getAllScanData().forEach(scan -> {
@@ -187,8 +192,8 @@ public class ForgeCommonCompatibilityManager extends CommonCompatibilityManager 
                             VoicechatPlugin plugin = (VoicechatPlugin) clazz.getDeclaredConstructor().newInstance();
                             plugins.add(plugin);
                         }
-                    } catch (Exception e) {
-                        Voicechat.LOGGER.warn("Failed to load plugin '{}': {}", annotationData.memberName(), e.getMessage());
+                    } catch (Throwable e) {
+                        Voicechat.LOGGER.warn("Failed to load plugin '{}'", annotationData.memberName(), e);
                     }
                 }
             });

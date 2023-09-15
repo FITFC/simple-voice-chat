@@ -64,13 +64,17 @@ public class ServerVoiceEvents implements Listener {
     }
 
     public boolean isCompatible(Player player) {
-        return clientCompatibilities.getOrDefault(player.getUniqueId(), -1) == Voicechat.COMPATIBILITY_VERSION;
+        return isCompatible(player.getUniqueId());
+    }
+
+    public boolean isCompatible(UUID playerUuid) {
+        return clientCompatibilities.getOrDefault(playerUuid, -1) == Voicechat.COMPATIBILITY_VERSION;
     }
 
     public static Component getIncompatibleMessage(int clientCompatibilityVersion) {
         if (clientCompatibilityVersion <= 6) {
             // Send a literal string, as we don't know if the translations exist on these versions
-            return Component.text(String.format(Voicechat.translate("not_compatible"), Voicechat.INSTANCE.getDescription().getVersion(), "Simple Voice Chat"));
+            return Component.text(String.format(Voicechat.TRANSLATIONS.voicechatNotCompatibleMessage.get(), Voicechat.INSTANCE.getDescription().getVersion(), "Simple Voice Chat"));
         } else {
             // This translation key is only available for compatibility version 7+
             return Component.translatable("message.voicechat.incompatible_version",
@@ -85,9 +89,14 @@ public class ServerVoiceEvents implements Listener {
         }
         server.getPlayerStateManager().onPlayerCompatibilityCheckSucceeded(player);
         server.getCategoryManager().onPlayerCompatibilityCheckSucceeded(player);
+        server.getGroupManager().onPlayerCompatibilityCheckSucceeded(player);
 
-        UUID secret = server.getSecret(player.getUniqueId());
-        NetManager.sendToClient(player, new SecretPacket(player, secret, Voicechat.SERVER_CONFIG));
+        UUID secret = server.generateNewSecret(player.getUniqueId());
+        if (secret == null) {
+            Voicechat.LOGGER.warn("Player already requested secret - ignoring");
+            return;
+        }
+        NetManager.sendToClient(player, new SecretPacket(player, secret, server.getPort(), Voicechat.SERVER_CONFIG));
         Voicechat.LOGGER.info("Sent secret to {}", player.getName());
     }
 
@@ -103,7 +112,8 @@ public class ServerVoiceEvents implements Listener {
                 return;
             }
             if (!isCompatible(player)) {
-                player.kickPlayer("You need %s %s to play on this server".formatted(
+                player.kickPlayer(String.format(
+                        Voicechat.TRANSLATIONS.forceVoicechatKickMessage.get(),
                         "Simple Voice Chat",
                         Voicechat.INSTANCE.getDescription().getVersion()
                 ));
@@ -113,6 +123,8 @@ public class ServerVoiceEvents implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
+        server.getGroupManager().onPlayerLoggedOut(event.getPlayer());
+
         clientCompatibilities.remove(event.getPlayer().getUniqueId());
         if (server == null) {
             return;

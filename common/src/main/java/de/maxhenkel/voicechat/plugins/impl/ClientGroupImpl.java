@@ -28,6 +28,16 @@ public class ClientGroupImpl implements Group {
         return group.getId();
     }
 
+    @Override
+    public boolean isPersistent() {
+        return group.isPersistent();
+    }
+
+    @Override
+    public Type getType() {
+        return group.getType();
+    }
+
     public ClientGroup getGroup() {
         return group;
     }

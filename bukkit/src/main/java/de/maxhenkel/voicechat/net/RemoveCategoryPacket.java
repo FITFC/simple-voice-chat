@@ -1,12 +1,12 @@
 package de.maxhenkel.voicechat.net;
 
+import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.util.FriendlyByteBuf;
-import de.maxhenkel.voicechat.util.NamespacedKeyUtil;
-import org.bukkit.NamespacedKey;
+import net.kyori.adventure.key.Key;
 
 public class RemoveCategoryPacket implements Packet<RemoveCategoryPacket> {
 
-    public static final NamespacedKey REMOVE_CATEGORY = NamespacedKeyUtil.voicechat("remove_category");
+    public static final Key REMOVE_CATEGORY = Voicechat.compatibility.createNamespacedKey("remove_category");
 
     private String categoryId;
 
@@ -23,7 +23,7 @@ public class RemoveCategoryPacket implements Packet<RemoveCategoryPacket> {
     }
 
     @Override
-    public NamespacedKey getID() {
+    public Key getID() {
         return REMOVE_CATEGORY;
     }
 

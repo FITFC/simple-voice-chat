@@ -3,13 +3,18 @@ package de.maxhenkel.voicechat.voice.client;
 import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.VoicechatClient;
 import de.maxhenkel.voicechat.api.opus.OpusDecoder;
+import de.maxhenkel.voicechat.debug.VoicechatUncaughtExceptionHandler;
+import de.maxhenkel.voicechat.integration.freecam.FreecamUtil;
 import de.maxhenkel.voicechat.plugins.PluginManager;
 import de.maxhenkel.voicechat.plugins.impl.opus.OpusManager;
-import de.maxhenkel.voicechat.voice.client.speaker.*;
+import de.maxhenkel.voicechat.voice.client.speaker.Speaker;
+import de.maxhenkel.voicechat.voice.client.speaker.SpeakerManager;
 import de.maxhenkel.voicechat.voice.common.*;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
@@ -32,8 +37,9 @@ public class AudioChannel extends Thread {
     private boolean stopped;
     private final OpusDecoder decoder;
     private long lastSequenceNumber;
+    private long lostPackets;
 
-    public AudioChannel(ClientVoicechat client, InitializationData initializationData, UUID uuid) throws NativeDependencyException {
+    public AudioChannel(ClientVoicechat client, InitializationData initializationData, UUID uuid) {
         this.client = client;
         this.initializationData = initializationData;
         this.uuid = uuid;
@@ -41,12 +47,13 @@ public class AudioChannel extends Thread {
         this.packetBuffer = new AudioPacketBuffer(VoicechatClient.CLIENT_CONFIG.audioPacketThreshold.get());
         this.lastPacketTime = System.currentTimeMillis();
         this.stopped = false;
-        this.decoder = OpusManager.createDecoder(SoundManager.SAMPLE_RATE, SoundManager.FRAME_SIZE, initializationData.getMtuSize());
+        this.decoder = OpusManager.createDecoder();
         this.lastSequenceNumber = -1L;
         this.minecraft = Minecraft.getInstance();
         setDaemon(true);
         setName("AudioChannelThread-" + uuid.toString());
-        Voicechat.LOGGER.info("Creating audio channel for " + uuid);
+        setUncaughtExceptionHandler(new VoicechatUncaughtExceptionHandler());
+        Voicechat.LOGGER.info("Creating audio channel for {}", uuid);
     }
 
     public boolean canKill() {
@@ -54,7 +61,7 @@ public class AudioChannel extends Thread {
     }
 
     public void closeAndKill() {
-        Voicechat.LOGGER.info("Closing audio channel for " + uuid);
+        Voicechat.LOGGER.info("Closing audio channel for {}", uuid);
         stopped = true;
         queue.clear();
         if (Thread.currentThread() == this) {
@@ -86,7 +93,6 @@ public class AudioChannel extends Thread {
             speaker = SpeakerManager.createSpeaker(client.getSoundManager(), uuid);
 
             while (!stopped) {
-
                 if (ClientManager.getPlayerStateManager().isDisabled()) {
                     closeAndKill();
                     return;
@@ -129,9 +135,12 @@ public class AudioChannel extends Thread {
                     }
 
                     if (packetsToCompensate <= 4) {
+                        lostPackets += packetsToCompensate;
                         for (int i = 0; i < packetsToCompensate; i++) {
                             writeToSpeaker(packet, decoder.decode(null));
                         }
+                    } else {
+                        Voicechat.LOGGER.debug("Skipping compensation for {} packets", packetsToCompensate);
                     }
                 }
 
@@ -155,7 +164,7 @@ public class AudioChannel extends Thread {
                 speaker.close();
             }
             decoder.close();
-            Voicechat.LOGGER.info("Closed audio channel for " + uuid);
+            Voicechat.LOGGER.info("Closed audio channel for {}", uuid);
         }
     }
 
@@ -168,8 +177,6 @@ public class AudioChannel extends Thread {
     }
 
     private void writeToSpeaker(SoundPacket<?> packet, short[] monoData) {
-        @Nullable Player player = minecraft.level.getPlayerByUUID(uuid);
-
         float channelVolume;
 
         if (VoicechatClient.USERNAME_CACHE.has(uuid)) {
@@ -188,10 +195,23 @@ public class AudioChannel extends Thread {
             client.getTalkCache().updateTalking(uuid, false);
             appendRecording(() -> PositionalAudioUtils.convertToStereo(processedMonoData));
         } else if (packet instanceof PlayerSoundPacket soundPacket) {
-            if (player == null) {
-                return;
+            @Nullable Entity entity = minecraft.level.getPlayerByUUID(uuid);
+            if (entity == null) {
+                Vec3 position = minecraft.gameRenderer.getMainCamera().getPosition();
+                AABB box = new AABB(
+                        position.x - soundPacket.getDistance() - 1F,
+                        position.y - soundPacket.getDistance() - 1F,
+                        position.z - soundPacket.getDistance() - 1F,
+                        position.x + soundPacket.getDistance() + 1F,
+                        position.y + soundPacket.getDistance() + 1F,
+                        position.z + soundPacket.getDistance() + 1F
+                );
+                entity = minecraft.level.getEntities((Entity) null, box, e -> e.getUUID().equals(uuid)).stream().findAny().orElse(null);
+                if (entity == null) {
+                    return;
+                }
             }
-            if (player == minecraft.cameraEntity) {
+            if (entity == minecraft.cameraEntity) {
                 short[] processedMonoData = PluginManager.instance().onReceiveStaticClientSound(uuid, monoData);
                 speaker.play(processedMonoData, volume, soundPacket.getCategory());
                 client.getTalkCache().updateTalking(uuid, soundPacket.isWhispering());
@@ -199,24 +219,42 @@ public class AudioChannel extends Thread {
                 return;
             }
 
-            float deathVolume = Math.min(Math.max((20F - (float) player.deathTime) / 20F, 0F), 1F);
+            float deathVolume = 1F;
+            if (entity instanceof LivingEntity) {
+                deathVolume = Math.min(Math.max((20F - (float) ((LivingEntity) entity).deathTime) / 20F, 0F), 1F);
+            }
             volume *= deathVolume;
-            Vec3 pos = player.getEyePosition();
+            Vec3 pos = entity.getEyePosition();
 
             short[] processedMonoData = PluginManager.instance().onReceiveEntityClientSound(uuid, monoData, soundPacket.isWhispering(), soundPacket.getDistance());
 
-            if (pos.distanceTo(minecraft.gameRenderer.getMainCamera().getPosition()) > soundPacket.getDistance() + 1D) {
+            if (FreecamUtil.getDistanceTo(pos) > soundPacket.getDistance() + 1D) {
+                return;
+            }
+
+            float distanceVolume = FreecamUtil.getDistanceVolume(soundPacket.getDistance(), pos);
+
+            if (FreecamUtil.isFreecamEnabled()) {
+                // Static, but with volume adjusted for distance
+                volume *= distanceVolume;
+                speaker.play(processedMonoData, volume, soundPacket.getCategory());
+                if (distanceVolume > 0F) {
+                    client.getTalkCache().updateTalking(uuid, soundPacket.isWhispering());
+                }
+                float recordingVolume = volume;
+                appendRecording(() -> PositionalAudioUtils.convertToStereo(processedMonoData, recordingVolume));
                 return;
             }
 
             speaker.play(processedMonoData, volume, pos, soundPacket.getCategory(), soundPacket.getDistance());
-            if (PositionalAudioUtils.getDistanceVolume(soundPacket.getDistance(), pos) > 0F) {
+            if (distanceVolume > 0F) {
                 client.getTalkCache().updateTalking(uuid, soundPacket.isWhispering());
             }
-            appendRecording(() -> PositionalAudioUtils.convertToStereoForRecording(soundPacket.getDistance(), pos, processedMonoData, deathVolume));
+            float recordingVolume = deathVolume;
+            appendRecording(() -> PositionalAudioUtils.convertToStereoForRecording(soundPacket.getDistance(), pos, processedMonoData, recordingVolume));
         } else if (packet instanceof LocationSoundPacket p) {
             short[] processedMonoData = PluginManager.instance().onReceiveLocationalClientSound(uuid, monoData, p.getLocation(), p.getDistance());
-            if (p.getLocation().distanceTo(minecraft.gameRenderer.getMainCamera().getPosition()) > p.getDistance() + 1D) {
+            if (FreecamUtil.getDistanceTo(p.getLocation()) > p.getDistance() + 1D) {
                 return;
             }
             speaker.play(processedMonoData, volume, p.getLocation(), p.getCategory(), p.getDistance());
@@ -240,4 +278,19 @@ public class AudioChannel extends Thread {
         return stopped;
     }
 
+    public BlockingQueue<SoundPacket<?>> getQueue() {
+        return queue;
+    }
+
+    public Speaker getSpeaker() {
+        return speaker;
+    }
+
+    public AudioPacketBuffer getPacketBuffer() {
+        return packetBuffer;
+    }
+
+    public long getLostPackets() {
+        return lostPackets;
+    }
 }

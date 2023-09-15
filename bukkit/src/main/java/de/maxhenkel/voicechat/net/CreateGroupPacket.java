@@ -1,28 +1,31 @@
 package de.maxhenkel.voicechat.net;
 
 import de.maxhenkel.voicechat.Voicechat;
+import de.maxhenkel.voicechat.api.Group;
+import de.maxhenkel.voicechat.plugins.impl.GroupImpl;
 import de.maxhenkel.voicechat.util.FriendlyByteBuf;
-import de.maxhenkel.voicechat.util.NamespacedKeyUtil;
-import org.bukkit.NamespacedKey;
+import net.kyori.adventure.key.Key;
 import org.bukkit.entity.Player;
 
 import javax.annotation.Nullable;
 
 public class CreateGroupPacket implements Packet<CreateGroupPacket> {
 
-    public static final NamespacedKey CREATE_GROUP = NamespacedKeyUtil.voicechat("create_group");
+    public static final Key CREATE_GROUP = Voicechat.compatibility.createNamespacedKey("create_group");
 
     private String name;
     @Nullable
     private String password;
+    private Group.Type type;
 
     public CreateGroupPacket() {
 
     }
 
-    public CreateGroupPacket(String name, @Nullable String password) {
+    public CreateGroupPacket(String name, @Nullable String password, Group.Type type) {
         this.name = name;
         this.password = password;
+        this.type = type;
     }
 
     public String getName() {
@@ -34,8 +37,12 @@ public class CreateGroupPacket implements Packet<CreateGroupPacket> {
         return password;
     }
 
+    public Group.Type getType() {
+        return type;
+    }
+
     @Override
-    public NamespacedKey getID() {
+    public Key getID() {
         return CREATE_GROUP;
     }
 
@@ -51,6 +58,7 @@ public class CreateGroupPacket implements Packet<CreateGroupPacket> {
         if (buf.readBoolean()) {
             password = buf.readUtf(512);
         }
+        type = GroupImpl.TypeImpl.fromInt(buf.readShort());
         return this;
     }
 
@@ -61,6 +69,7 @@ public class CreateGroupPacket implements Packet<CreateGroupPacket> {
         if (password != null) {
             buf.writeUtf(password, 512);
         }
+        buf.writeShort(GroupImpl.TypeImpl.toInt(type));
     }
 
 }

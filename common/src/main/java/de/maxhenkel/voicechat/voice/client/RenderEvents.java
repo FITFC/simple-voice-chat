@@ -6,7 +6,6 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.VoicechatClient;
 import de.maxhenkel.voicechat.intercompatibility.ClientCompatibilityManager;
-import de.maxhenkel.voicechat.voice.common.ClientGroup;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.GameRenderer;
@@ -17,6 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+
+import java.util.UUID;
 
 public class RenderEvents {
 
@@ -47,6 +48,11 @@ public class RenderEvents {
 
         ClientPlayerStateManager manager = ClientManager.getPlayerStateManager();
         ClientVoicechat client = ClientManager.getClient();
+
+        if (manager.isDisconnected() && isStartup()) {
+            return;
+        }
+
         if (manager.isDisconnected()) {
             renderIcon(stack, DISCONNECT_ICON);
         } else if (manager.isDisabled()) {
@@ -61,9 +67,14 @@ public class RenderEvents {
             }
         }
 
-        if (manager.isInGroup() && VoicechatClient.CLIENT_CONFIG.showGroupHUD.get()) {
+        if (manager.getGroupID() != null && VoicechatClient.CLIENT_CONFIG.showGroupHUD.get()) {
             GroupChatManager.renderIcons(stack);
         }
+    }
+
+    private boolean isStartup() {
+        ClientVoicechat client = ClientManager.getClient();
+        return client != null && (System.currentTimeMillis() - client.getStartTime()) < 5000;
     }
 
     private void renderIcon(PoseStack matrixStack, ResourceLocation texture) {
@@ -104,7 +115,7 @@ public class RenderEvents {
         if (!minecraft.options.hideGui) {
             ClientPlayerStateManager manager = ClientManager.getPlayerStateManager();
             ClientVoicechat client = ClientManager.getClient();
-            ClientGroup group = manager.getGroup(player);
+            UUID groupId = manager.getGroup(player);
 
             if (client != null && client.getTalkCache().isWhispering(player)) {
                 renderPlayerIcon(player, component, WHISPER_SPEAKER_ICON, stack, vertexConsumers, light);
@@ -112,7 +123,7 @@ public class RenderEvents {
                 renderPlayerIcon(player, component, SPEAKER_ICON, stack, vertexConsumers, light);
             } else if (manager.isPlayerDisconnected(player)) {
                 renderPlayerIcon(player, component, DISCONNECT_ICON, stack, vertexConsumers, light);
-            } else if (group != null && !group.equals(manager.getGroup())) {
+            } else if (groupId != null && !groupId.equals(manager.getGroupID())) {
                 renderPlayerIcon(player, component, GROUP_ICON, stack, vertexConsumers, light);
             } else if (manager.isPlayerDisabled(player)) {
                 renderPlayerIcon(player, component, SPEAKER_OFF_ICON, stack, vertexConsumers, light);
@@ -154,10 +165,10 @@ public class RenderEvents {
     }
 
     private boolean shouldShowIcons() {
-        if (ClientManager.getClient() != null && ClientManager.getClient().getConnection() != null && ClientManager.getClient().getConnection().isAuthenticated()) {
+        if (ClientManager.getClient() != null && ClientManager.getClient().getConnection() != null && ClientManager.getClient().getConnection().isInitialized()) {
             return true;
         }
-        return minecraft.getCurrentServer() != null && !minecraft.getCurrentServer().isLan();
+        return minecraft.getSingleplayerServer() == null || minecraft.getSingleplayerServer().isPublished();
     }
 
     private static void vertex(VertexConsumer builder, PoseStack matrixStack, float x, float y, float z, float u, float v, int light) {

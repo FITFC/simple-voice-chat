@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 
+import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,11 +23,11 @@ public class ClientCategoryManager extends CategoryManager {
         images = new ConcurrentHashMap<>();
         CommonCompatibilityManager.INSTANCE.getNetManager().addCategoryChannel.setClientListener((client, handler, packet) -> {
             addCategory(packet.getCategory());
-            Voicechat.logDebug("Added category {}", packet.getCategory().getId());
+            Voicechat.LOGGER.debug("Added category {}", packet.getCategory().getId());
         });
         CommonCompatibilityManager.INSTANCE.getNetManager().removeCategoryChannel.setClientListener((client, handler, packet) -> {
             removeCategory(packet.getCategoryId());
-            Voicechat.logDebug("Removed category {}", packet.getCategoryId());
+            Voicechat.LOGGER.debug("Removed category {}", packet.getCategoryId());
         });
         ClientCompatibilityManager.INSTANCE.onDisconnect(this::clear);
     }
@@ -42,10 +43,12 @@ public class ClientCategoryManager extends CategoryManager {
     }
 
     @Override
-    public void removeCategory(String categoryId) {
-        super.removeCategory(categoryId);
+    @Nullable
+    public VolumeCategoryImpl removeCategory(String categoryId) {
+        VolumeCategoryImpl volumeCategory = super.removeCategory(categoryId);
         unRegisterImage(categoryId);
         AdjustVolumeList.update();
+        return volumeCategory;
     }
 
     public void clear() {

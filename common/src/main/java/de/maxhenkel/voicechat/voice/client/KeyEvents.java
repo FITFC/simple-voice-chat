@@ -8,8 +8,10 @@ import de.maxhenkel.voicechat.gui.group.GroupScreen;
 import de.maxhenkel.voicechat.gui.group.JoinGroupScreen;
 import de.maxhenkel.voicechat.gui.volume.AdjustVolumesScreen;
 import de.maxhenkel.voicechat.intercompatibility.ClientCompatibilityManager;
+import de.maxhenkel.voicechat.voice.common.ClientGroup;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -54,13 +56,18 @@ public class KeyEvents {
         ClientVoicechat client = ClientManager.getClient();
         ClientPlayerStateManager playerStateManager = ClientManager.getPlayerStateManager();
         if (KEY_VOICE_CHAT.consumeClick()) {
-            minecraft.setScreen(new VoiceChatScreen());
+            if (Screen.hasAltDown()) {
+                ClientManager.getDebugOverlay().toggle();
+            } else {
+                minecraft.setScreen(new VoiceChatScreen());
+            }
         }
 
         if (KEY_GROUP.consumeClick()) {
             if (client != null && client.getConnection() != null && client.getConnection().getData().groupsEnabled()) {
-                if (playerStateManager.isInGroup()) {
-                    minecraft.setScreen(new GroupScreen(playerStateManager.getGroup()));
+                ClientGroup group = playerStateManager.getGroup();
+                if (group != null) {
+                    minecraft.setScreen(new GroupScreen(group));
                 } else {
                     minecraft.setScreen(new JoinGroupScreen());
                 }
@@ -85,11 +92,11 @@ public class KeyEvents {
             checkConnected();
         }
 
-        if (KEY_MUTE.consumeClick() && checkConnected()) {
+        if (KEY_MUTE.consumeClick()) {
             playerStateManager.setMuted(!playerStateManager.isMuted());
         }
 
-        if (KEY_DISABLE.consumeClick() && checkConnected()) {
+        if (KEY_DISABLE.consumeClick()) {
             playerStateManager.setDisabled(!playerStateManager.isDisabled());
         }
 
@@ -110,7 +117,7 @@ public class KeyEvents {
     }
 
     private boolean checkConnected() {
-        if (ClientManager.getClient() == null || ClientManager.getClient().getConnection() == null || !ClientManager.getClient().getConnection().isAuthenticated()) {
+        if (ClientManager.getClient() == null || ClientManager.getClient().getConnection() == null || !ClientManager.getClient().getConnection().isInitialized()) {
             sendUnavailableMessage();
             return false;
         }

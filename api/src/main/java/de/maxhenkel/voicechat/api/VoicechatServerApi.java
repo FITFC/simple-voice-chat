@@ -1,6 +1,10 @@
 package de.maxhenkel.voicechat.api;
 
 import de.maxhenkel.voicechat.api.audiochannel.*;
+import de.maxhenkel.voicechat.api.audiolistener.AudioListener;
+import de.maxhenkel.voicechat.api.audiolistener.PlayerAudioListener;
+import de.maxhenkel.voicechat.api.audiosender.AudioSender;
+import de.maxhenkel.voicechat.api.config.ConfigAccessor;
 import de.maxhenkel.voicechat.api.opus.OpusEncoder;
 import de.maxhenkel.voicechat.api.packets.EntitySoundPacket;
 import de.maxhenkel.voicechat.api.packets.LocationalSoundPacket;
@@ -77,7 +81,7 @@ public interface VoicechatServerApi extends VoicechatApi {
      * <b>NOTE</b>: Never use more than one audio player for every audio channel.
      *
      * @param audioChannel  the channel where the audio player should send the audio to
-     * @param encoder       the optus encoder used to encode the audio data
+     * @param encoder       the opus encoder used to encode the audio data
      * @param audioSupplier this gets called whenever a new audio frame needs to be sent. The size of the array always needs to be 960. To end the playback, return <code>null</code>
      * @return the audio player
      */
@@ -90,11 +94,75 @@ public interface VoicechatServerApi extends VoicechatApi {
      * <b>NOTE</b>: Never use more than one audio player for every audio channel.
      *
      * @param audioChannel the channel where the audio player should send the audio to
-     * @param encoder      the optus encoder used to encode the audio data
+     * @param encoder      the opus encoder used to encode the audio data
      * @param audio        the audio data
      * @return the audio player
      */
     AudioPlayer createAudioPlayer(AudioChannel audioChannel, OpusEncoder encoder, short[] audio);
+
+    /**
+     * Creates a new audio sender.
+     * <br/>
+     * This can be used to simulate a player sending microphone packets.
+     * This needs to be registered using {@link #registerAudioSender(AudioSender)} and unregistered using {@link #unregisterAudioSender(AudioSender)}.
+     *
+     * @param connection the connection of the player
+     * @return the audio sender
+     */
+    AudioSender createAudioSender(VoicechatConnection connection);
+
+    /**
+     * <b>NOTE</b>: Only one instance of this can exist per player. This will return <code>false</code> if an audio sender for this player already exists.
+     * <br/>
+     * <b>NOTE</b>: The audio sender will only work for players that are connected to the server and don't have the mod installed. Otherwise, it will return <code>false</code>.
+     *
+     * @param sender the sender to register
+     * @return if the sender was registered
+     */
+    boolean registerAudioSender(AudioSender sender);
+
+    /**
+     * Unregisters an audio sender.
+     *
+     * @param sender the sender to unregister
+     * @return <code>false</code> if the audio sender was not registered.
+     */
+    boolean unregisterAudioSender(AudioSender sender);
+
+    /**
+     * @return a {@link PlayerAudioListener} builder
+     */
+    PlayerAudioListener.Builder playerAudioListenerBuilder();
+
+    /**
+     * Registers a new {@link AudioListener}.
+     * <br/>
+     * Returns false if the listener is already registered.
+     *
+     * @param listener the listener to register
+     * @return if the listener was registered
+     */
+    boolean registerAudioListener(AudioListener listener);
+
+    /**
+     * Unregisters an {@link AudioListener}.
+     * <br/>
+     * Returns false if the listener is already unregistered.
+     *
+     * @param listener the listener to unregister
+     * @return if the listener was unregistered
+     */
+    boolean unregisterAudioListener(AudioListener listener);
+
+    /**
+     * Unregisters an {@link AudioListener}.
+     * <br/>
+     * Returns false if the listener is already unregistered.
+     *
+     * @param listenerId the {@link AudioListener#getListenerId()} of the listener to unregister
+     * @return if the listener was unregistered
+     */
+    boolean unregisterAudioListener(UUID listenerId);
 
     /**
      * Gets the connection of the player with this UUID.
@@ -122,8 +190,51 @@ public interface VoicechatServerApi extends VoicechatApi {
      * @param name     the name of the group
      * @param password the password of the group - <code>null</code> for no password
      * @return the group
+     * @deprecated use {@link #groupBuilder()} instead
      */
+    @Deprecated
     Group createGroup(String name, @Nullable String password);
+
+    /**
+     * Creates a new group.
+     *
+     * @param name       the name of the group
+     * @param password   the password of the group - <code>null</code> for no password
+     * @param persistent if the group should be persistent
+     * @return the group
+     * @deprecated use {@link #groupBuilder()} instead
+     */
+    @Deprecated
+    Group createGroup(String name, @Nullable String password, boolean persistent);
+
+    /**
+     * @return a new group builder
+     */
+    Group.Builder groupBuilder();
+
+    /**
+     * Removes a persistent group.
+     *
+     * <b>NOTE</b>: You can't remove a group that is not persistent or has players in it.
+     *
+     * @param groupId the ID of the group
+     * @return if the group was removed
+     */
+    boolean removeGroup(UUID groupId);
+
+    /**
+     * Gets a group by its ID.
+     *
+     * @param groupId the ID of the group
+     * @return the group or <code>null</code> if the group doesn't exist
+     */
+    @Nullable
+    Group getGroup(UUID groupId);
+
+    /**
+     * @return all groups
+     */
+    Collection<Group> getGroups();
 
     /**
      * Gets the secret for the user with this <code>userId</code>.
@@ -197,5 +308,15 @@ public interface VoicechatServerApi extends VoicechatApi {
      * @param categoryId the category ID to remove
      */
     void unregisterVolumeCategory(String categoryId);
+
+    /**
+     * @return all registered volume categories
+     */
+    Collection<VolumeCategory> getVolumeCategories();
+
+    /**
+     * @return a read-only config accessor for the mods server config
+     */
+    ConfigAccessor getServerConfig();
 
 }

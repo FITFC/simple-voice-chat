@@ -1,24 +1,10 @@
-buildscript {
-    repositories {
-        mavenCentral()
-        maven { url = 'https://maven.maxhenkel.de/repository/public' }
-        mavenLocal()
-    }
-    dependencies {
-        classpath group: 'de.maxhenkel.forge-update', name: 'forge-update', version: '1.0.4'
-    }
-}
-
 plugins {
-    id 'net.minecraftforge.gradle' version '5.+'
-    // https://github.com/matthewprenger/CurseGradle
-    id "com.matthewprenger.cursegradle" version "1.4.0"
-    id "com.github.johnrengelman.shadow" version "7.1.0"
+    id 'net.neoforged.gradle' version '6.0.+'
+    id 'com.matthewprenger.cursegradle' version "${cursegradle_version}"
+    id 'com.github.johnrengelman.shadow' version "${shadow_version}"
+    id 'com.modrinth.minotaur' version "${minotaur_version}"
+    id 'mod-update' version "${mod_update_version}"
 }
-
-apply plugin: 'net.minecraftforge.gradle'
-apply plugin: 'forge-update'
-apply plugin: 'com.modrinth.minotaur'
 
 archivesBaseName = project.archives_base_name
 version = mod_version
@@ -30,21 +16,15 @@ minecraft {
     mappings channel: 'official', version: minecraft_version
 
     runs {
-        all {
-            lazyToken('minecraft_classpath') {
-                configurations.shadow.copyRecursive().resolve().collect { it.absolutePath }.join(File.pathSeparator)
-            }
-            environment 'COMPATIBILITY_VERSION', mod_compatibility_version
-        }
         client {
             workingDirectory project.file('run')
             property 'forge.logging.console.level', 'debug'
             args = ['--username', "henkelmax${new Random().nextInt(1000)}"]
         }
         server {
-            workingDirectory project.file('run/server').canonicalPath
+            workingDirectory project.file('run/server')
             property 'forge.logging.console.level', 'debug'
-            arg "--nogui"
+            arg '--nogui'
         }
     }
 }
@@ -52,10 +32,18 @@ minecraft {
 repositories {
     mavenCentral()
     maven { url = 'https://maven.maxhenkel.de/repository/public' }
-    mavenLocal()
+    maven { url = 'https://maven.shedaniel.me/' }
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+configurations {
+    shadowMc.extendsFrom minecraftLibrary
+}
+
+tasks.register('prepareWorkspace') {
+
+}
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
@@ -64,32 +52,34 @@ dependencies {
         transitive false
     }
 
+    implementation(fg.deobf("me.shedaniel.cloth:cloth-config-forge:${cloth_config_version}"));
+
     implementation 'org.jetbrains:annotations:23.0.0'
 
-    implementation "de.maxhenkel.configbuilder:configbuilder:${configbuilder_version}"
-    shadow "de.maxhenkel.configbuilder:configbuilder:${configbuilder_version}"
+    minecraftLibrary "de.maxhenkel.configbuilder:configbuilder:${configbuilder_version}"
+    shadowMc "de.maxhenkel.configbuilder:configbuilder:${configbuilder_version}"
 
-    implementation "de.maxhenkel.opus4j:opus4j:${opus4j_version}"
-    shadow "de.maxhenkel.opus4j:opus4j:${opus4j_version}"
+    minecraftLibrary "de.maxhenkel.opus4j:opus4j:${opus4j_version}"
+    shadowMc "de.maxhenkel.opus4j:opus4j:${opus4j_version}"
 
-    implementation "org.concentus:Concentus:${concentus_version}"
-    shadow "org.concentus:Concentus:${concentus_version}"
+    minecraftLibrary "org.concentus:Concentus:${concentus_version}"
+    shadowMc "org.concentus:Concentus:${concentus_version}"
 
-    implementation "de.maxhenkel.rnnoise4j:rnnoise4j:${rnnoise4j_version}"
-    shadow "de.maxhenkel.rnnoise4j:rnnoise4j:${rnnoise4j_version}"
+    minecraftLibrary "de.maxhenkel.rnnoise4j:rnnoise4j:${rnnoise4j_version}"
+    shadowMc "de.maxhenkel.rnnoise4j:rnnoise4j:${rnnoise4j_version}"
 
-    implementation "de.maxhenkel.lame4j:lame4j:${lame4j_version}"
-    shadow "de.maxhenkel.lame4j:lame4j:${lame4j_version}"
+    minecraftLibrary "de.maxhenkel.lame4j:lame4j:${lame4j_version}"
+    shadowMc "de.maxhenkel.lame4j:lame4j:${lame4j_version}"
 
-    implementation(project(':api')) {
+    minecraftLibrary(project(':api')) {
         transitive false
     }
-    shadow(project(':api')) {
+    shadowMc(project(':api')) {
         transitive false
     }
 }
 
-task generateJava(type: Copy) {
+tasks.register('generateJava', Copy) {
     from project(':common').file('src/template/java')
     into "${buildDir}/generated/java"
     expand 'compatibility_version': mod_compatibility_version
@@ -100,18 +90,19 @@ sourceSets.main.java {
 compileJava.dependsOn generateJava
 
 processResources {
-    filesMatching("**/*.toml") {
+    filesMatching('**/*.toml') {
         expand 'mod_id': mod_id,
                 'mod_version': mod_version,
                 'mod_name': mod_name,
                 'forge_loader_requirement': forge_loader_requirement,
                 'forge_requirement': forge_requirement,
-                'minecraft_version': minecraft_version
+                'minecraft_version': minecraft_version,
+                'cloth_config_version': cloth_config_version
     }
     from("${project(':common').projectDir}/src/main/resources")
 }
 
-tasks.withType(JavaCompile) {
+tasks.withType(JavaCompile).configureEach {
     source(project(':common').sourceSets.main.allSource)
 }
 
@@ -119,27 +110,23 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
-task prepareWorkspace {
-
-}
-
 jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes(["Specification-Title"     : mod_name,
-                    "Specification-Vendor"    : mod_vendor,
-                    "Specification-Version"   : "1",
-                    "Implementation-Title"    : mod_name,
-                    "Implementation-Version"  : mod_version,
-                    "Implementation-Vendor"   : mod_vendor,
-                    "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        attributes(['Specification-Title'     : mod_name,
+                    'Specification-Vendor'    : mod_vendor,
+                    'Specification-Version'   : "1",
+                    'Implementation-Title'    : mod_name,
+                    'Implementation-Version'  : mod_version,
+                    'Implementation-Vendor'   : mod_vendor,
+                    'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
         ])
     }
     from configurations.shadow.collect { it.isDirectory() ? it : zipTree(it) }
 }
 
-task deobfJar(type: Jar) {
-    classifier 'deobf'
+tasks.register('deobfJar', Jar) {
+    archiveClassifier = 'deobf'
     from sourceSets.main.output
 }
 
@@ -148,7 +135,7 @@ curseforge {
     project {
         id = curse_id
         changelogType = 'markdown'
-        changelog = file("changelog.md")
+        changelog = file('changelog.md')
         releaseType = release_type
         addGameVersion minecraft_version
         addGameVersion 'Forge'
@@ -157,6 +144,7 @@ curseforge {
             displayName = "[FORGE][${minecraft_version}] ${mod_name} ${mod_version}"
             relations {
                 optionalDependency 'sound-physics-remastered'
+                optionalDependency 'cloth-config'
             }
         }
     }
@@ -173,26 +161,21 @@ modrinth {
     versionName = "${mod_name} ${mod_version}"
     uploadFile = jar
     versionType = release_type.toUpperCase()
-    changelog = file("changelog.md").text
+    changelog = file('changelog.md').text
     gameVersions = [minecraft_version]
     loaders = ['forge']
+    dependencies {
+        optional.project '9s6osm5g' // ClothConfig
+    }
 }
 tasks.modrinth.dependsOn(build)
 
-forgeUpdate {
-    def messages = []
-    file("changelog.md").eachLine { String line ->
-        if (line.trim().startsWith('-')) {
-            messages.add(line.replaceFirst('-', '').trim())
-        }
-    }
-
+modUpdate {
     serverURL = 'https://update.maxhenkel.de/'
-    apiKey = file("${rootDir}/forge_update_api_key.txt").exists() ? file("${rootDir}/forge_update_api_key.txt").text : ''
     modID = mod_id
     gameVersion = minecraft_version
     modVersion = mod_version
-    updateMessages = messages
+    changelogFile = file('changelog.md')
     releaseType = release_type
     tags = recommended == 'true' ? ['recommended'] : []
 }
@@ -200,20 +183,15 @@ forgeUpdate {
 jar.finalizedBy('reobfJar')
 
 shadowJar {
-    configurations = [project.configurations.shadow]
-    classifier ''
+    configurations = [project.configurations.shadowMc]
+    archiveClassifier = ''
     relocate 'de.maxhenkel.configbuilder', "de.maxhenkel.${mod_id}.configbuilder"
-    relocate 'de.maxhenkel.opus4j', "de.maxhenkel.${mod_id}.opus4j"
-    relocate 'de.maxhenkel.lame4j', "de.maxhenkel.${mod_id}.lame4j"
     relocate 'org.concentus', "de.maxhenkel.${mod_id}.concentus"
-    relocate 'de.maxhenkel.rnnoise4j', "de.maxhenkel.${mod_id}.rnnoise4j"
-    relocate 'com.dd.plist', "de.maxhenkel.${mod_id}.com.dd.plist"
     dependencies {
-        exclude(dependency('net.java.dev.jna:jna'))
-        exclude(dependency('net.java.dev.jna:jna-platform'))
         exclude(dependency('com.google.code.findbugs:jsr305'))
     }
 }
+shadowJar.dependsOn('reobfJar')
 
 reobf {
     shadowJar {}

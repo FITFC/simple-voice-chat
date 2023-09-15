@@ -5,7 +5,7 @@ import de.maxhenkel.voicechat.net.NetManager;
 import de.maxhenkel.voicechat.net.PlayerStatePacket;
 import de.maxhenkel.voicechat.net.PlayerStatesPacket;
 import de.maxhenkel.voicechat.net.UpdateStatePacket;
-import de.maxhenkel.voicechat.voice.common.ClientGroup;
+import de.maxhenkel.voicechat.plugins.PluginManager;
 import de.maxhenkel.voicechat.voice.common.PlayerState;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -38,14 +38,14 @@ public class PlayerStateManager implements Listener {
         states.put(player.getUniqueId(), state);
 
         broadcastState(state);
-        Voicechat.logDebug("Got state of {}: {}", player.getName(), state);
+        Voicechat.LOGGER.debug("Got state of {}: {}", player.getName(), state);
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         states.remove(event.getPlayer().getUniqueId());
         broadcastState(new PlayerState(event.getPlayer().getUniqueId(), event.getPlayer().getName(), false, true));
-        Voicechat.logDebug("Removing state of {}", event.getPlayer().getName());
+        Voicechat.LOGGER.debug("Removing state of {}", event.getPlayer().getName());
     }
 
     @EventHandler
@@ -53,18 +53,19 @@ public class PlayerStateManager implements Listener {
         PlayerState state = defaultDisconnectedState(event.getPlayer());
         states.put(event.getPlayer().getUniqueId(), state);
         broadcastState(state);
-        Voicechat.logDebug("Setting default state of {}: {}", event.getPlayer().getName(), state);
+        Voicechat.LOGGER.debug("Setting default state of {}: {}", event.getPlayer().getName(), state);
     }
 
-    private void broadcastState(PlayerState state) {
+    public void broadcastState(PlayerState state) {
         PlayerStatePacket packet = new PlayerStatePacket(state);
         Voicechat.INSTANCE.getServer().getOnlinePlayers().forEach(p -> NetManager.sendToClient(p, packet));
+        PluginManager.instance().onPlayerStateChanged(state);
     }
 
     public void onPlayerCompatibilityCheckSucceeded(Player player) {
         PlayerStatesPacket packet = new PlayerStatesPacket(states);
         NetManager.sendToClient(player, packet);
-        Voicechat.logDebug("Sending initial states to {}", player.getName());
+        Voicechat.LOGGER.debug("Sending initial states to {}", player.getName());
     }
 
     public void onPlayerVoicechatDisconnect(UUID uuid) {
@@ -76,7 +77,7 @@ public class PlayerStateManager implements Listener {
         state.setDisconnected(true);
 
         broadcastState(state);
-        Voicechat.logDebug("Set state of {} to disconnected: {}", uuid, state);
+        Voicechat.LOGGER.debug("Set state of {} to disconnected: {}", uuid, state);
     }
 
     public void onPlayerVoicechatConnect(Player player) {
@@ -91,7 +92,7 @@ public class PlayerStateManager implements Listener {
         states.put(player.getUniqueId(), state);
 
         broadcastState(state);
-        Voicechat.logDebug("Set state of {} to connected: {}", player.getName(), state);
+        Voicechat.LOGGER.debug("Set state of {} to connected: {}", player.getName(), state);
     }
 
     @Nullable
@@ -103,16 +104,16 @@ public class PlayerStateManager implements Listener {
         return new PlayerState(player.getUniqueId(), player.getName(), false, true);
     }
 
-    public void setGroup(Player player, @Nullable ClientGroup group) {
+    public void setGroup(Player player, @Nullable UUID group) {
         PlayerState state = states.get(player.getUniqueId());
         if (state == null) {
             state = PlayerStateManager.defaultDisconnectedState(player);
-            Voicechat.logDebug("Defaulting to default state for {}: {}", player.getName(), state);
+            Voicechat.LOGGER.debug("Defaulting to default state for {}: {}", player.getName(), state);
         }
         state.setGroup(group);
         states.put(player.getUniqueId(), state);
         broadcastState(state);
-        Voicechat.logDebug("Setting group of {}: {}", player.getName(), state);
+        Voicechat.LOGGER.debug("Setting group of {}: {}", player.getName(), state);
     }
 
     public Collection<PlayerState> getStates() {

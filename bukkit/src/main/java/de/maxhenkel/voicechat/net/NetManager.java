@@ -4,11 +4,7 @@ import de.maxhenkel.voicechat.Voicechat;
 import de.maxhenkel.voicechat.util.FriendlyByteBuf;
 import io.netty.buffer.Unpooled;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
-import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import org.bukkit.Bukkit;
-import org.bukkit.craftbukkit.v1_19_R1.entity.CraftPlayer;
-import org.bukkit.craftbukkit.v1_19_R1.util.CraftChatMessage;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -37,6 +33,8 @@ public class NetManager implements Listener {
             registerOutgoingPacket(SecretPacket.class);
             registerOutgoingPacket(PlayerStatesPacket.class);
             registerOutgoingPacket(PlayerStatePacket.class);
+            registerOutgoingPacket(AddGroupPacket.class);
+            registerOutgoingPacket(RemoveGroupPacket.class);
             registerOutgoingPacket(JoinedGroupPacket.class);
             registerOutgoingPacket(AddCategoryPacket.class);
             registerOutgoingPacket(RemoveCategoryPacket.class);
@@ -63,21 +61,17 @@ public class NetManager implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        if (event.getPlayer() instanceof CraftPlayer player) {
-            Set<String> outgoingChannels = Bukkit.getMessenger().getOutgoingChannels(Voicechat.INSTANCE);
-            for (String channel : outgoingChannels) {
-                player.addChannel(channel);
-            }
+        Set<String> outgoingChannels = Bukkit.getMessenger().getOutgoingChannels(Voicechat.INSTANCE);
+        for (String channel : outgoingChannels) {
+            Voicechat.compatibility.addChannel(event.getPlayer(), channel);
         }
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        if (event.getPlayer() instanceof CraftPlayer player) {
-            Set<String> outgoingChannels = Bukkit.getMessenger().getOutgoingChannels(Voicechat.INSTANCE);
-            for (String channel : outgoingChannels) {
-                player.removeChannel(channel);
-            }
+        Set<String> outgoingChannels = Bukkit.getMessenger().getOutgoingChannels(Voicechat.INSTANCE);
+        for (String channel : outgoingChannels) {
+            Voicechat.compatibility.removeChannel(event.getPlayer(), channel);
         }
     }
 
@@ -90,7 +84,7 @@ public class NetManager implements Listener {
             try {
                 packet = c.newInstance();
             } catch (Exception e) {
-                Voicechat.LOGGER.error("Failed to create new packet instance of {}: {}", packetClass.getSimpleName(), e.getMessage());
+                Voicechat.LOGGER.error("Failed to create new packet instance of {}", packetClass.getSimpleName(), e);
                 return;
             }
             FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.wrappedBuffer(bytes));
@@ -106,30 +100,28 @@ public class NetManager implements Listener {
     }
 
     public static void sendToClient(Player player, Packet<?> p) {
-        if (!Voicechat.SERVER.isCompatible(player)) {
-            return;
-        }
-        try {
-            FriendlyByteBuf buf = new FriendlyByteBuf();
-            p.toBytes(buf);
-            byte[] bytes = new byte[buf.readableBytes()];
-            buf.readBytes(bytes);
-            player.sendPluginMessage(Voicechat.INSTANCE, p.getID().toString(), bytes);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        Voicechat.compatibility.runTask(() -> {
+            if (!Voicechat.SERVER.isCompatible(player)) {
+                return;
+            }
+            try {
+                FriendlyByteBuf buf = new FriendlyByteBuf();
+                p.toBytes(buf);
+                byte[] bytes = new byte[buf.readableBytes()];
+                buf.readBytes(bytes);
+                player.sendPluginMessage(Voicechat.INSTANCE, p.getID().toString(), bytes);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 
-    public static void sendMessage(Player p, Component component) {
-        if (p instanceof CraftPlayer player) {
-            player.getHandle().b.a(new ClientboundSystemChatPacket(CraftChatMessage.fromJSON(GsonComponentSerializer.gson().serialize(component)), false));
-        }
+    public static void sendMessage(Player player, Component component) {
+        Voicechat.compatibility.sendMessage(player, component);
     }
 
-    public static void sendStatusMessage(Player p, Component component) {
-        if (p instanceof CraftPlayer player) {
-            player.getHandle().b.a(new ClientboundSystemChatPacket(CraftChatMessage.fromJSON(GsonComponentSerializer.gson().serialize(component)), true));
-        }
+    public static void sendStatusMessage(Player player, Component component) {
+        Voicechat.compatibility.sendStatusMessage(player, component);
     }
 
 }

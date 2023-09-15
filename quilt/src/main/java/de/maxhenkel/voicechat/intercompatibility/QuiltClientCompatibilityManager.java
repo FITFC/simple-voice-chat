@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.Connection;
 import net.minecraft.server.packs.repository.PackRepository;
 import net.minecraft.server.packs.repository.RepositorySource;
+import org.quiltmc.qsl.lifecycle.api.client.event.ClientTickEvents;
 import org.quiltmc.qsl.networking.api.client.ClientPlayConnectionEvents;
 
 import java.net.SocketAddress;
@@ -38,6 +39,11 @@ public class QuiltClientCompatibilityManager extends ClientCompatibilityManager 
     @Override
     public void onMouseEvent(MouseEvent onMouseEvent) {
         InputEvents.MOUSE_KEY.register(onMouseEvent);
+    }
+
+    @Override
+    public void onClientTick(Runnable onClientTick) {
+        ClientTickEvents.START.register(client -> onClientTick.run());
     }
 
     @Override
@@ -78,11 +84,6 @@ public class QuiltClientCompatibilityManager extends ClientCompatibilityManager 
     @Override
     public void onDisconnect(Runnable onDisconnect) {
         ClientWorldEvents.DISCONNECT.register(onDisconnect);
-    }
-
-    @Override
-    public void onJoinServer(Runnable onJoinServer) {
-        ClientWorldEvents.JOIN_SERVER.register(onJoinServer);
     }
 
     @Override

@@ -5,6 +5,7 @@ import de.maxhenkel.voicechat.api.Group;
 import de.maxhenkel.voicechat.api.ServerPlayer;
 import de.maxhenkel.voicechat.api.VoicechatConnection;
 import de.maxhenkel.voicechat.voice.common.PlayerState;
+import de.maxhenkel.voicechat.voice.server.PlayerStateManager;
 import de.maxhenkel.voicechat.voice.server.Server;
 import org.bukkit.entity.Player;
 
@@ -62,7 +63,8 @@ public class VoicechatConnectionImpl implements VoicechatConnection {
             server.getGroupManager().leaveGroup((Player) player.getPlayer());
             return;
         }
-        if (group instanceof GroupImpl g) {
+        if (group instanceof GroupImpl) {
+            GroupImpl g = (GroupImpl) group;
             de.maxhenkel.voicechat.voice.server.Group actualGroup = server.getGroupManager().getGroup(g.getGroup().getId());
             if (actualGroup == null) {
                 server.getGroupManager().addGroup(g.getGroup(), serverPlayer);
@@ -73,8 +75,60 @@ public class VoicechatConnectionImpl implements VoicechatConnection {
     }
 
     @Override
+    public boolean isConnected() {
+        return !state.isDisconnected();
+    }
+
+    @Override
+    public void setConnected(boolean connected) {
+        if (isInstalled()) {
+            return;
+        }
+        Server server = Voicechat.SERVER.getServer();
+        if (server == null) {
+            return;
+        }
+        PlayerStateManager manager = server.getPlayerStateManager();
+        PlayerState actualState = manager.getState(state.getUuid());
+        if (actualState == null) {
+            return;
+        }
+        if (actualState.isDisconnected() != connected) {
+            return;
+        }
+        actualState.setDisconnected(!connected);
+        manager.broadcastState(actualState);
+    }
+
+    @Override
     public boolean isDisabled() {
         return state.isDisabled();
+    }
+
+    @Override
+    public void setDisabled(boolean disabled) {
+        if (isInstalled()) {
+            return;
+        }
+        Server server = Voicechat.SERVER.getServer();
+        if (server == null) {
+            return;
+        }
+        PlayerStateManager manager = server.getPlayerStateManager();
+        PlayerState actualState = manager.getState(state.getUuid());
+        if (actualState == null) {
+            return;
+        }
+        if (actualState.isDisabled() == disabled) {
+            return;
+        }
+        actualState.setDisabled(disabled);
+        manager.broadcastState(actualState);
+    }
+
+    @Override
+    public boolean isInstalled() {
+        return Voicechat.SERVER.isCompatible(serverPlayer);
     }
 
     @Override

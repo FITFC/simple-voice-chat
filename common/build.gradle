@@ -1,14 +1,5 @@
-buildscript {
-    repositories {
-        mavenCentral()
-        maven { url = 'https://maven.maxhenkel.de/repository/public' }
-        mavenLocal()
-    }
-}
-
 plugins {
-    id "java"
-    id 'fabric-loom' version '1.0-SNAPSHOT'
+    id 'fabric-loom'
 }
 
 sourceCompatibility = JavaLanguageVersion.of(java_version as int)
@@ -17,15 +8,8 @@ targetCompatibility = JavaLanguageVersion.of(java_version as int)
 repositories {
     mavenCentral()
     maven { url = 'https://maven.fabricmc.net/' }
-    maven {
-        name = "henkelmax.public"
-        url = 'https://maven.maxhenkel.de/repository/public'
-    }
-    mavenLocal()
-}
-
-task prepareWorkspace {
-
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
+    maven { url = 'https://maven.shedaniel.me/' }
 }
 
 sourceSets {
@@ -54,4 +38,8 @@ dependencies {
     implementation "de.maxhenkel.lame4j:lame4j:${lame4j_version}"
 
     implementation project(':api')
+
+    modApi("me.shedaniel.cloth:cloth-config-fabric:${cloth_config_version}"){
+        transitive = false
+    }
 }

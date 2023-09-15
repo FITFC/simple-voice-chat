@@ -57,21 +57,22 @@ public class EntityAudioChannelImpl extends AudioChannelImpl implements EntityAu
 
     @Override
     public void send(byte[] opusData) {
-        broadcast(new PlayerSoundPacket(channelId, opusData, sequenceNumber.getAndIncrement(), whispering, distance, category));
+        broadcast(new PlayerSoundPacket(entity.getUuid(), opusData, sequenceNumber.getAndIncrement(), whispering, distance, category));
     }
 
     @Override
     public void send(MicrophonePacket microphonePacket) {
-        broadcast(new PlayerSoundPacket(channelId, microphonePacket.getOpusEncodedData(), sequenceNumber.getAndIncrement(), whispering, distance, category));
+        broadcast(new PlayerSoundPacket(entity.getUuid(), microphonePacket.getOpusEncodedData(), sequenceNumber.getAndIncrement(), whispering, distance, category));
     }
 
     @Override
     public void flush() {
-        broadcast(new PlayerSoundPacket(channelId, new byte[0], sequenceNumber.getAndIncrement(), whispering, distance, category));
+        broadcast(new PlayerSoundPacket(entity.getUuid(), new byte[0], sequenceNumber.getAndIncrement(), whispering, distance, category));
     }
 
     private void broadcast(PlayerSoundPacket packet) {
-        if (entity.getEntity() instanceof org.bukkit.entity.Entity entity) {
+        if (entity.getEntity() instanceof org.bukkit.entity.Entity) {
+            org.bukkit.entity.Entity entity = (org.bukkit.entity.Entity) this.entity.getEntity();
             server.broadcast(ServerWorldUtils.getPlayersInRange(entity.getWorld(), entity.getLocation(), server.getBroadcastRange(distance), filter == null ? player -> true : player -> filter.test(new ServerPlayerImpl(player))), packet, null, null, null, SoundPacketEvent.SOURCE_PLUGIN);
         }
     }

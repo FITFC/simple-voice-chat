@@ -2,13 +2,13 @@ package de.maxhenkel.voicechat.config;
 
 import com.sun.jna.Platform;
 import de.maxhenkel.configbuilder.ConfigBuilder;
-import de.maxhenkel.configbuilder.ConfigEntry;
+import de.maxhenkel.configbuilder.entry.ConfigEntry;
 import de.maxhenkel.voicechat.intercompatibility.CommonCompatibilityManager;
 import de.maxhenkel.voicechat.voice.client.GroupPlayerIconOrientation;
 import de.maxhenkel.voicechat.voice.client.MicrophoneActivationType;
 import de.maxhenkel.voicechat.voice.client.speaker.AudioType;
 
-public abstract class ClientConfig {
+public class ClientConfig {
 
     public ConfigEntry<Double> voiceChatVolume;
     public ConfigEntry<Double> voiceActivationThreshold;
@@ -41,6 +41,8 @@ public abstract class ClientConfig {
     public ConfigEntry<Boolean> offlinePlayerVolumeAdjustment;
     public ConfigEntry<AudioType> audioType;
     public ConfigEntry<Boolean> useNatives;
+    public ConfigEntry<Boolean> freecamSupport;
+    public ConfigEntry<Boolean> muteOnJoin;
 
     public ClientConfig(ConfigBuilder builder) {
 
@@ -60,7 +62,8 @@ public abstract class ClientConfig {
                 );
         microphoneActivationType = builder
                 .enumEntry("microphone_activation_type", MicrophoneActivationType.PTT,
-                        "Microphone activation type"
+                        "Microphone activation type",
+                        "Possible values are 'PTT' and 'VOICE'"
                 );
         outputBufferSize = builder
                 .integerEntry("output_buffer_size", 5, 1, 16,
@@ -70,7 +73,7 @@ public abstract class ClientConfig {
                 );
         audioPacketThreshold = builder
                 .integerEntry("audio_packet_threshold", 3, 0, 16,
-                        "The maximum amount of audio packets that are held back, if a packet arrives out of order or gets dropped",
+                        "The maximum amount of audio packets that are held back if a packet arrives out of order or gets dropped",
                         "This prevents discarding audio packets that are slightly out of order",
                         "Set this to 0 to disable"
                 );
@@ -115,7 +118,8 @@ public abstract class ClientConfig {
                 );
         groupPlayerIconOrientation = builder
                 .enumEntry("group_player_icon_orientation", GroupPlayerIconOrientation.VERTICAL,
-                        "The orientation of the player icons in the group HUD"
+                        "The orientation of the player icons in the group HUD",
+                        "Possible values are 'VERTICAL' and 'HORIZONTAL'"
                 );
         groupPlayerIconPosX = builder
                 .integerEntry("group_player_icon_pos_x", 4, Integer.MIN_VALUE, Integer.MAX_VALUE,
@@ -177,17 +181,22 @@ public abstract class ClientConfig {
                 );
         audioType = builder
                 .enumEntry("audio_type", AudioType.NORMAL,
-                        "The 3D audio type"
+                        "The 3D audio type",
+                        "Possible values are 'NORMAL', 'REDUCED' and 'OFF'"
                 );
         useNatives = builder
                 .booleanEntry("use_natives", true,
                         "If the mod should load native libraries",
-                        "If set to false, the Java Opus implementation will be used and the denoiser won't be available" //TODO add mp3 encoder/decoder
+                        "If set to false, the Java Opus implementation will be used, the denoiser won't be available and you won't be able to record audio."
                 );
-
-        if (Platform.isMac() && !javaMicrophoneImplementation.get()) {
-            javaMicrophoneImplementation.set(true).save();
-        }
+        freecamSupport = builder
+                .booleanEntry("freecam_support", true,
+                        "This lets you hear players near you, even though you are further away with your freecam"
+                );
+        muteOnJoin = builder
+                .booleanEntry("mute_on_join", false,
+                        "If enabled, you will be automatically muted when joining a world"
+                );
     }
 
 }
